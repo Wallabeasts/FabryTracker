@@ -1,0 +1,29 @@
+{
+  "name": "Rare Disease Tracker Beta",
+  "short_name": "RDT Beta",
+  "description": "Keep your rare condition's lab results, treatments and symptoms in one place.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#123F73",
+  "theme_color": "#123F73",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
