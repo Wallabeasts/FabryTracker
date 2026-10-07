@@ -32,8 +32,20 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Set up Android tools
-        uses: android-actions/setup-android@v3
+      # These machines already carry the Android SDK, so nothing is installed from scratch.
+      # Anything the build still needs is fetched here, and a failure is ignored so that the
+      # build itself gets the chance to report what is actually missing.
+      - name: Check the Android SDK that is already here
+        run: |
+          echo "ANDROID_HOME = $ANDROID_HOME"
+          ls "$ANDROID_HOME/platforms" || true
+          SDKM=$(ls "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | head -1)
+          if [ -n "$SDKM" ]; then
+            yes | "$SDKM" --licenses > /dev/null 2>&1 || true
+            yes | "$SDKM" "platforms;android-34" "build-tools;34.0.0" > /dev/null 2>&1 || true
+          fi
+          echo "Platforms now present:"
+          ls "$ANDROID_HOME/platforms" || true
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
