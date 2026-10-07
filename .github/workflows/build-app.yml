@@ -1,0 +1,43 @@
+# Builds the Android app (an .apk file) on GitHub's computers.
+#
+# Nothing is published: the .apk is attached to this workflow run, visible only to you when signed
+# in to GitHub. Start it from the Actions tab: "Build Android app" -> "Run workflow".
+name: Build Android app
+
+on:
+  workflow_dispatch:        # the "Run workflow" button
+  push:
+    paths:
+      - "android/**"
+      - ".github/workflows/build-app.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android tools
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+
+      - name: Build the app
+        working-directory: android
+        run: gradle assembleDebug --no-daemon
+
+      - name: Attach the .apk to this run
+        uses: actions/upload-artifact@v4
+        with:
+          name: rare-disease-tracker-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          retention-days: 90
