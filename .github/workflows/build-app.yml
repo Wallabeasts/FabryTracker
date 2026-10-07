@@ -1,14 +1,17 @@
 # Builds the Android app (an .apk file) on GitHub's computers.
 #
-# Nothing is published: the .apk is attached to this workflow run, visible only to you when signed
-# in to GitHub. Start it from the Actions tab: "Build Android app" -> "Run workflow".
+# The app's source arrives as one file, android-src.zip, sitting beside this repository's
+# index.html. Keeping it zipped means there are no folders to flatten when it is uploaded.
+#
+# Nothing is published: the .apk is attached to this workflow run, where only you can download it.
+# Start it from the Actions tab: "Build Android app" -> "Run workflow".
 name: Build Android app
 
 on:
   workflow_dispatch:        # the "Run workflow" button
   push:
     paths:
-      - "android/**"
+      - "android-src.zip"
       - ".github/workflows/build-app.yml"
 
 jobs:
@@ -16,6 +19,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Unpack the app's source
+        run: |
+          unzip -q android-src.zip -d .
+          echo "Unpacked. Top of the project:"
+          ls android
 
       - name: Use Java 17
         uses: actions/setup-java@v4
@@ -33,7 +42,7 @@ jobs:
 
       - name: Build the app
         working-directory: android
-        run: gradle assembleDebug --no-daemon
+        run: gradle assembleDebug --no-daemon --stacktrace
 
       - name: Attach the .apk to this run
         uses: actions/upload-artifact@v4
