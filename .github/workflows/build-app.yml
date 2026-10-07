@@ -1,18 +1,23 @@
 # Builds the Android app (an .apk file) on GitHub's computers.
 #
-# The app's source arrives as one file, android-src.zip, sitting beside this repository's
-# index.html. Keeping it zipped means there are no folders to flatten when it is uploaded.
+# The app's source arrives as one file, android-src.zip, beside this repository's index.html.
+# Keeping it zipped means there are no folders to flatten when it is uploaded.
 #
-# Nothing is published: the .apk is attached to this workflow run, where only you can download it.
-# Start it from the Actions tab: "Build Android app" -> "Run workflow".
+# If the build fails, the full log is committed back to this repository as build-log.txt, so the
+# error can be read without signing in to anything.
+#
+# Nothing is published: the .apk is attached to the run, where only you can download it.
 name: Build Android app
 
 on:
-  workflow_dispatch:        # the "Run workflow" button
+  workflow_dispatch:
   push:
     paths:
       - "android-src.zip"
       - ".github/workflows/build-app.yml"
+
+permissions:
+  contents: write          # needed only to save build-log.txt when a build fails
 
 jobs:
   build:
@@ -33,18 +38,9 @@ jobs:
           java-version: "17"
 
       # These machines already carry the Android SDK, so nothing is installed from scratch.
-      # Anything the build still needs is fetched here, and a failure is ignored so that the
-      # build itself gets the chance to report what is actually missing.
       - name: Check the Android SDK that is already here
         run: |
           echo "ANDROID_HOME = $ANDROID_HOME"
-          ls "$ANDROID_HOME/platforms" || true
-          SDKM=$(ls "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | head -1)
-          if [ -n "$SDKM" ]; then
-            yes | "$SDKM" --licenses > /dev/null 2>&1 || true
-            yes | "$SDKM" "platforms;android-34" "build-tools;34.0.0" > /dev/null 2>&1 || true
-          fi
-          echo "Platforms now present:"
           ls "$ANDROID_HOME/platforms" || true
 
       - name: Set up Gradle
@@ -53,12 +49,35 @@ jobs:
           gradle-version: "8.7"
 
       - name: Build the app
+        id: build
+        continue-on-error: true
         working-directory: android
-        run: gradle assembleDebug --no-daemon --stacktrace
+        run: |
+          set -o pipefail
+          gradle assembleDebug --no-daemon --stacktrace 2>&1 | tee "$GITHUB_WORKSPACE/build-log.txt"
+
+      - name: Save the log if it failed
+        if: steps.build.outcome == 'failure'
+        run: |
+          tail -c 120000 build-log.txt > log-tail.txt && mv log-tail.txt build-log.txt
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add -f build-log.txt
+          git commit -m "Build log from a failed run" || exit 0
+          git push origin HEAD:${{ github.ref_name }}
 
       - name: Attach the .apk to this run
+        if: steps.build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: rare-disease-tracker-apk
           path: android/app/build/outputs/apk/debug/*.apk
           retention-days: 90
+
+      - name: Report the result
+        run: |
+          if [ "${{ steps.build.outcome }}" != "success" ]; then
+            echo "The build failed. build-log.txt has been saved into the repository."
+            exit 1
+          fi
+          echo "Built. The .apk is attached to this run under Artifacts."
