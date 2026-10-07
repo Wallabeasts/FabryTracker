@@ -1,0 +1,45 @@
+plugins { id "com.android.application" }
+
+android {
+    namespace "io.github.wallabeasts.raretracker"
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "io.github.wallabeasts.raretracker"
+        minSdk 29              // Android 10 and newer
+        targetSdk 34
+        versionCode 325
+        versionName "3.25"
+    }
+
+    // The app is signed with the key kept beside this file, so that a rebuilt app installs over the
+    // one already on the phone and keeps the record. Without a fixed key, every build would be a
+    // stranger to Android and would have to be installed fresh. This key only identifies builds as
+    // coming from the same place; it protects nothing on its own and guards no secret.
+    signingConfigs {
+        local {
+            storeFile file("app.keystore")
+            storePassword "raretracker"
+            keyAlias "raretracker"
+            keyPassword "raretracker"
+        }
+    }
+
+    buildTypes {
+        debug {
+            minifyEnabled false
+            signingConfig signingConfigs.local
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation "androidx.appcompat:appcompat:1.7.0"
+    implementation "androidx.webkit:webkit:1.11.0"
+    implementation "androidx.activity:activity:1.9.2"
+}
