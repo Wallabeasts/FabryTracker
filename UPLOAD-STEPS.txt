@@ -1,11 +1,11 @@
-My Rare Disease Tracker 3.26: how to put this on GitHub
+My Rare Disease Tracker 3.27: how to put this on GitHub
 
 1. Unzip this file on your computer. You'll get a folder of files.
 2. Go to your repository on github.com (wallabeasts/FabryTracker).
 3. Click "Add file", then "Upload files".
 4. Open the unzipped folder, select everything in it (files AND folders), and drag it all onto the GitHub page.
    GitHub asks to replace files with the same name. That's expected.
-5. Type a short note such as "Version 3.26" and click "Commit changes".
+5. Type a short note such as "Version 3.27" and click "Commit changes".
 6. Wait a minute or two. The live app (index.html at the top) and the test copy (the beta folder) update by themselves.
 
 What's in here

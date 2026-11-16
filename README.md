@@ -3,7 +3,7 @@
 My Rare Disease Tracker (formerly Fabry Tracker) helps people living with a rare condition keep their lab results,
 treatments and symptoms in one place, see how they change over time, and bring that picture to every visit with their care team.
 
-Developed by Eric Wallace, MD (UAB Medicine), and Andrew Wallace.
+Developed by Eric Wallace, MD, and Andrew Wallace.
 
 ## What's in this repository
 
@@ -48,6 +48,23 @@ GitHub or to anyone else. The Learn tab sends only the chosen topic when it sear
 - A different browser or device starts empty. Patients can move their record with **Export backup** and **Restore from a backup**.
 - The page includes a content security policy that only allows it to contact ClinicalTrials.gov, PubMed and
   Google Fonts.
+
+## New logo (3.27)
+
+- The zebra ribbon logo replaces the blue ribbon: on the welcome screen (src/App.jsx LOGO_FULL, background made
+  transparent), in the top bar (LOGO_EMBLEM), as the browser tab icon (build.mjs) and as the home-screen icons
+  (icon-*.png, apple-touch-icon.png, icons/). logo.png is the original artwork.
+
+## Information buttons (3.27)
+
+- Every lab, scan and score, in every condition, has an "i" button on its Trends chart and next to its box on the Add page.
+  It opens a bubble that says what the test is, where to find the value (for example, the echocardiogram report for
+  septum thickness, the pulmonary function test report for FVC, the abdominal CT report for abdominal imaging), and
+  whether higher or lower is generally better.
+- The 6-minute walk and 10-stair climb bubbles explain step by step how to do and time the test.
+- The wording lives in src/labInfo.js; a condition can override it (for example, phosphate in XLH).
+- The tour has two new steps: the "i" buttons and Thoughts, Journal, Imagination.
+- All new text is translated into the 7 other languages.
 
 ## New name and logo (3.26)
 

@@ -1,13 +1,13 @@
 {
-  "name": "My Rare Disease Tracker Beta",
-  "short_name": "My RDT Beta",
+  "name": "My Rare Disease Tracker",
+  "short_name": "My RD Tracker",
   "description": "Keep your rare condition's lab results, treatments and symptoms in one place.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#03060C",
-  "theme_color": "#03060C",
+  "background_color": "#000000",
+  "theme_color": "#000000",
   "icons": [
     {
       "src": "icon-192.png",
