@@ -4,6 +4,7 @@ if (window.top !== window.self) {
   try { window.top.location.href = window.location.href; } catch (e) { /* the framing page stays blank */ }
   throw new Error("framed");
 }
+import { NATIVE_APP } from "./native.js";
 import "./storage.js";
 import { savedLang, setLanguage } from "./i18n.js";
 import { createRoot } from "react-dom/client";
@@ -45,7 +46,8 @@ window.addEventListener("beforeinstallprompt", (e) => {
 });
 
 // Offline support: the service worker keeps a copy of the app on the phone.
-if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "127.0.0.1" || location.hostname === "localhost")) {
+// The phone apps carry their own copy of the app, so they skip it.
+if (!NATIVE_APP && "serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "127.0.0.1" || location.hostname === "localhost")) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("./sw.js").catch(() => {});
   });

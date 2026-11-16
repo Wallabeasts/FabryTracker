@@ -7,6 +7,7 @@ import {
   createAccount, logIn, logOut, changePassword, resetPassword, replaceRecoveryCode, eraseEverything, bioAvailable, bioEnabled, enableBio, disableBio, bioLogIn, readAccount, isProtectedKey, cryptoAvailable, currentUser,
 } from "./vault.js";
 import { checkPassword } from "./passwords.js";
+import { NATIVE_APP, saveFileInApp } from "./native.js";
 import { labInfo } from "./labInfo.js";
 import { ALERT_EVERY_DAYS, alertDue, cleanWatch, countryName, countryOptions, fetchEnrolling, matchTrials } from "./trialAlerts.js";
 import { LANGS, currentLang, dateLocale, dyn, setLanguage, setConditionNames, tr } from "./i18n.js";
@@ -792,6 +793,15 @@ function buildCSV(data, units = makeUnits("us")) {
 }
 
 function tryDownload(text, filename, mime) {
+  // Inside the phone apps, files go to the phone's Downloads folder (Android) or the share sheet (iPhone).
+  if (NATIVE_APP) {
+    saveFileInApp(text, filename, mime).then((done) => { if (!done) browserDownload(text, filename, mime); });
+    return;
+  }
+  browserDownload(text, filename, mime);
+}
+
+function browserDownload(text, filename, mime) {
   try {
     const url = URL.createObjectURL(new Blob([text], { type: mime }));
     const a = document.createElement("a");
@@ -3612,7 +3622,9 @@ function SettingsDialog({ theme, onTheme, region, onRegion, onTour, onTerms, onC
         </fieldset>
         <section className="mb-5">
           <h3 className="text-base font-bold mb-1">Health record</h3>
-          {region === "eu" ? (
+          {NATIVE_APP ? (
+            <p className="text-sm" style={{ color: C.muted }}>Connecting a patient portal works on the website version of the app for now. You can keep adding your results on the Add tab.</p>
+          ) : region === "eu" ? (
             <p className="text-sm" style={{ color: C.muted }}>Connecting a patient portal is available in the United States only.</p>
           ) : (
             <>
@@ -3624,7 +3636,7 @@ function SettingsDialog({ theme, onTheme, region, onRegion, onTour, onTerms, onC
             </>
           )}
         </section>
-        <InstallSection />
+        {!NATIVE_APP && <InstallSection />}
         <section className="mb-5">
           <h3 className="text-base font-bold mb-1">App tour</h3>
           <p className="text-sm mb-2" style={{ color: C.muted }}>A quick walk through each part of {APP_INFO.name}.</p>
@@ -8436,7 +8448,7 @@ function FabryTracker() {
               <ShareCard key={people.active} data={data} person={activePerson} />
             </div>
 
-            {region !== "eu" && (
+            {region !== "eu" && !NATIVE_APP && (
               <section className="p-4 mb-5 rounded-lg" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
                 <h2 className="text-base font-bold mb-1">Connect your health record</h2>
                 <p className="text-sm mb-3" style={{ color: C.muted }}>
