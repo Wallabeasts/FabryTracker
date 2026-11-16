@@ -1,0 +1,6 @@
+.DS_Store
+_to_delete/
+node_modules/
+*.jks
+*-PRIVATE.txt
+build-log.txt.tmp

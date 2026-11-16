@@ -1,12 +1,16 @@
-# Builds the Android app (an .apk file) on GitHub's computers.
+# Builds the Android app on GitHub's computers. Nothing is published.
 #
 # The app's source arrives as one file, android-src.zip, beside this repository's index.html.
 # Keeping it zipped means there are no folders to flatten when it is uploaded.
 #
+# Each run makes:
+#   - a test .apk (rare-disease-tracker-apk): install it directly on an Android phone for testing;
+#   - a Google Play .aab (rare-disease-tracker-play-aab): upload it in Google Play Console. It is made only when the
+#     four UPLOAD_* secrets are set (Settings > Secrets and variables > Actions).
+# Both are attached to the run (Actions tab > the run > Artifacts), where only you can download them.
+#
 # If the build fails, the full log is committed back to this repository as build-log.txt, so the
 # error can be read without signing in to anything.
-#
-# Nothing is published: the .apk is attached to the run, where only you can download it.
 name: Build Android app
 
 on:
@@ -37,24 +41,36 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      # These machines already carry the Android SDK, so nothing is installed from scratch.
-      - name: Check the Android SDK that is already here
-        run: |
-          echo "ANDROID_HOME = $ANDROID_HOME"
-          ls "$ANDROID_HOME/platforms" || true
-
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: "8.7"
+          gradle-version: "8.13"
+
+      - name: Put the upload key in place (only if the secrets are set)
+        env:
+          KEYSTORE_B64: ${{ secrets.UPLOAD_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+            echo "UPLOAD_KEYSTORE_FILE=$RUNNER_TEMP/upload.jks" >> "$GITHUB_ENV"
+            echo "Upload key found: the Google Play .aab will be made."
+          else
+            echo "No upload key secrets: only the test .apk will be made."
+          fi
 
       - name: Build the app
         id: build
         continue-on-error: true
         working-directory: android
+        env:
+          UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.UPLOAD_KEYSTORE_PASSWORD }}
+          UPLOAD_KEY_ALIAS: ${{ secrets.UPLOAD_KEY_ALIAS }}
+          UPLOAD_KEY_PASSWORD: ${{ secrets.UPLOAD_KEY_PASSWORD }}
         run: |
           set -o pipefail
-          gradle assembleDebug --no-daemon --stacktrace 2>&1 | tee "$GITHUB_WORKSPACE/build-log.txt"
+          TASKS="assembleDebug"
+          if [ -n "$UPLOAD_KEYSTORE_FILE" ]; then TASKS="assembleDebug bundleRelease"; fi
+          gradle $TASKS --no-daemon --stacktrace 2>&1 | tee "$GITHUB_WORKSPACE/build-log.txt"
 
       - name: Save the log if it failed
         if: steps.build.outcome == 'failure'
@@ -66,12 +82,20 @@ jobs:
           git commit -m "Build log from a failed run" || exit 0
           git push origin HEAD:${{ github.ref_name }}
 
-      - name: Attach the .apk to this run
+      - name: Attach the test .apk to this run
         if: steps.build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: rare-disease-tracker-apk
           path: android/app/build/outputs/apk/debug/*.apk
+          retention-days: 90
+
+      - name: Attach the Google Play .aab to this run
+        if: steps.build.outcome == 'success' && env.UPLOAD_KEYSTORE_FILE != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: rare-disease-tracker-play-aab
+          path: android/app/build/outputs/bundle/release/*.aab
           retention-days: 90
 
       - name: Report the result
@@ -80,4 +104,4 @@ jobs:
             echo "The build failed. build-log.txt has been saved into the repository."
             exit 1
           fi
-          echo "Built. The .apk is attached to this run under Artifacts."
+          echo "Built. Download the files under Artifacts on this run's page."
