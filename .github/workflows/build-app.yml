@@ -64,14 +64,29 @@ jobs:
         env:
           UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.UPLOAD_KEYSTORE_PASSWORD }}
           UPLOAD_KEY_ALIAS: ${{ secrets.UPLOAD_KEY_ALIAS }}
+          UPLOAD_KEY_PASSWORD: ${{ secrets.UPLOAD_KEY_PASSWORD }}
         run: |
+          # Notes go into build-log.txt too (no secret values, only their lengths), so a problem can be read there.
+          LOG="$GITHUB_WORKSPACE/build-log.txt"
           PW="$(printf '%s' "$UPLOAD_KEYSTORE_PASSWORD" | tr -d ' \r\n\t')"
+          KPW="$(printf '%s' "$UPLOAD_KEY_PASSWORD" | tr -d ' \r\n\t')"
           ALIAS="$(printf '%s' "${UPLOAD_KEY_ALIAS:-upload}" | tr -d ' \r\n\t')"
-          if keytool -list -keystore "$UPLOAD_KEYSTORE_FILE" -storepass "$PW" -alias "${ALIAS:-upload}" > /dev/null 2>&1; then
-            echo "Upload key opens with the saved password and alias."
-          else
-            echo "The upload key did not open. Check the UPLOAD_KEYSTORE_BASE64, UPLOAD_KEYSTORE_PASSWORD and UPLOAD_KEY_ALIAS secrets."
-            keytool -list -keystore "$UPLOAD_KEYSTORE_FILE" -storepass "$PW" 2>&1 | tail -5 || true
+          {
+            echo "== Upload key check =="
+            echo "key file bytes: $(wc -c < "$UPLOAD_KEYSTORE_FILE")  (expected 4424)"
+            echo "store password length: ${#PW}  key password length: ${#KPW}  alias: ${ALIAS}  (expected 24, 24, upload)"
+            if [ "$PW" = "$KPW" ]; then echo "the two passwords match"; else echo "the two passwords DO NOT match"; fi
+          } | tee -a "$LOG"
+          # Re-save the key in the classic Java format with one clean password, which every Android tool reads.
+          if keytool -importkeystore -noprompt -srckeystore "$UPLOAD_KEYSTORE_FILE" -srcstoretype PKCS12 \
+               -srcstorepass "$PW" -srcalias "$ALIAS" -srckeypass "$PW" \
+               -destkeystore "$RUNNER_TEMP/upload-clean.jks" -deststoretype JKS -deststorepass "$PW" \
+               -destalias upload -destkeypass "$PW" 2>&1 | tail -3 | tee -a "$LOG"; then
+            if [ -s "$RUNNER_TEMP/upload-clean.jks" ]; then
+              echo "UPLOAD_KEYSTORE_FILE=$RUNNER_TEMP/upload-clean.jks" >> "$GITHUB_ENV"
+              echo "UPLOAD_KEY_ALIAS_CLEAN=upload" >> "$GITHUB_ENV"
+              echo "upload key opened and re-saved: OK" | tee -a "$LOG"
+            fi
           fi
 
       - name: Build the app
@@ -80,13 +95,13 @@ jobs:
         working-directory: android
         env:
           UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.UPLOAD_KEYSTORE_PASSWORD }}
-          UPLOAD_KEY_ALIAS: ${{ secrets.UPLOAD_KEY_ALIAS }}
           UPLOAD_KEY_PASSWORD: ${{ secrets.UPLOAD_KEY_PASSWORD }}
         run: |
           set -o pipefail
+          export UPLOAD_KEY_ALIAS="${UPLOAD_KEY_ALIAS_CLEAN:-upload}"
           TASKS="assembleDebug"
           if [ -n "$UPLOAD_KEYSTORE_FILE" ]; then TASKS="assembleDebug bundleRelease"; fi
-          gradle $TASKS --no-daemon --stacktrace 2>&1 | tee "$GITHUB_WORKSPACE/build-log.txt"
+          gradle $TASKS --no-daemon --stacktrace 2>&1 | tee -a "$GITHUB_WORKSPACE/build-log.txt"
 
       - name: Save the log if it failed
         if: steps.build.outcome == 'failure'
