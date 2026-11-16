@@ -51,11 +51,27 @@ jobs:
           KEYSTORE_B64: ${{ secrets.UPLOAD_KEYSTORE_BASE64 }}
         run: |
           if [ -n "$KEYSTORE_B64" ]; then
-            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+            # Spaces or line breaks picked up when pasting are removed before decoding.
+            printf '%s' "$KEYSTORE_B64" | tr -d ' \r\n\t' | base64 -d > "$RUNNER_TEMP/upload.jks"
             echo "UPLOAD_KEYSTORE_FILE=$RUNNER_TEMP/upload.jks" >> "$GITHUB_ENV"
             echo "Upload key found: the Google Play .aab will be made."
           else
             echo "No upload key secrets: only the test .apk will be made."
+          fi
+
+      - name: Check the upload key opens (only if the secrets are set)
+        if: env.UPLOAD_KEYSTORE_FILE != ''
+        env:
+          UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.UPLOAD_KEYSTORE_PASSWORD }}
+          UPLOAD_KEY_ALIAS: ${{ secrets.UPLOAD_KEY_ALIAS }}
+        run: |
+          PW="$(printf '%s' "$UPLOAD_KEYSTORE_PASSWORD" | tr -d ' \r\n\t')"
+          ALIAS="$(printf '%s' "${UPLOAD_KEY_ALIAS:-upload}" | tr -d ' \r\n\t')"
+          if keytool -list -keystore "$UPLOAD_KEYSTORE_FILE" -storepass "$PW" -alias "${ALIAS:-upload}" > /dev/null 2>&1; then
+            echo "Upload key opens with the saved password and alias."
+          else
+            echo "The upload key did not open. Check the UPLOAD_KEYSTORE_BASE64, UPLOAD_KEYSTORE_PASSWORD and UPLOAD_KEY_ALIAS secrets."
+            keytool -list -keystore "$UPLOAD_KEYSTORE_FILE" -storepass "$PW" 2>&1 | tail -5 || true
           fi
 
       - name: Build the app
