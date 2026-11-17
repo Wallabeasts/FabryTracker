@@ -154,3 +154,13 @@ export async function nativeBioRemove(key) {
     else await androidCall("remove", key);
   } catch (e) { /* already gone */ }
 }
+
+// ---------- Apple Health (iPhone app only, read only) ----------
+// HealthDataPlugin in SceneDelegate.swift. Used only when the patient taps "Connect Apple Health".
+export async function healthAvailable() {
+  if (!IOS_APP) return false;
+  try { const r = await prefsLike("HealthData", "available", {}); return Boolean(r && r.available); } catch (e) { return false; }
+}
+export const healthConnect = () => prefsLike("HealthData", "connect", {});
+// Returns { sbp, dbp, hr, weightKg, heightCm }: lists of { date: "YYYY-MM-DD", value } (one average per day).
+export const healthRead = (days = 730) => prefsLike("HealthData", "read", { days });

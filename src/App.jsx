@@ -7,7 +7,7 @@ import {
   createAccount, logIn, logOut, changePassword, resetPassword, replaceRecoveryCode, eraseEverything, bioAvailable, bioEnabled, enableBio, disableBio, bioLogIn, bioKind, readAccount, isProtectedKey, cryptoAvailable, currentUser,
 } from "./vault.js";
 import { checkPassword } from "./passwords.js";
-import { NATIVE_APP, saveFileInApp } from "./native.js";
+import { NATIVE_APP, IOS_APP, saveFileInApp, healthAvailable, healthConnect, healthRead } from "./native.js";
 import { labInfo } from "./labInfo.js";
 import { ALERT_EVERY_DAYS, alertDue, cleanWatch, countryName, countryOptions, fetchEnrolling, matchTrials } from "./trialAlerts.js";
 import { LANGS, currentLang, dateLocale, dyn, setLanguage, setConditionNames, tr } from "./i18n.js";
@@ -2517,6 +2517,133 @@ function TermsDialog({ accepted, onClose }) {
   );
 }
 
+// ---------- Apple Health (iPhone app only) ----------
+// Only when the patient chooses it: reads blood pressure, resting heart rate, weight and height from Apple Health,
+// one value per day, and adds the days that don't already have that result. Nothing is sent anywhere.
+const HEALTH_DAYS = 730;
+function healthRows(raw, wanted) {
+  const byDate = {};
+  const put = (key, list, conv) => {
+    if (!wanted.has(key)) return;
+    (list || []).forEach((r) => {
+      if (!r || !/^\d{4}-\d{2}-\d{2}$/.test(String(r.date)) || !isFinite(r.value)) return;
+      const v = conv(Number(r.value));
+      if (!isFinite(v) || v <= 0) return;
+      (byDate[r.date] = byDate[r.date] || {})[key] = v;
+    });
+  };
+  put("sbp", raw.sbp, (v) => Math.round(v));
+  put("dbp", raw.dbp, (v) => Math.round(v));
+  put("hr", raw.hr, (v) => Math.round(v));
+  put("weight", raw.weightKg, (v) => Math.round((v / 0.45359237) * 10) / 10); // saved in pounds
+  put("heightCm", raw.heightCm, (v) => Math.round(v * 10) / 10);
+  return byDate;
+}
+
+function AppleHealthCard({ onOpen, lastHealth }) {
+  const [can, setCan] = useState(false);
+  useEffect(() => { healthAvailable().then(setCan); }, []);
+  if (!IOS_APP || !can) return null;
+  return (
+    <div className="mt-3" data-apple-health>
+      <p className="text-sm mb-2" style={{ color: C.muted }}>
+        Bring in blood pressure, resting heart rate, weight and height from Apple Health. Only if you choose to.
+        {lastHealth ? ` Last added ${fmtDate(toT(lastHealth.date))}.` : ""}
+      </p>
+      <Button kind="secondary" onClick={onOpen}>{lastHealth ? "Update from Apple Health" : "Connect Apple Health"}</Button>
+    </div>
+  );
+}
+
+function AppleHealthDialog({ cond, entries, onAdd, onClose }) {
+  const [stage, setStage] = useState("intro");
+  const [found, setFound] = useState(null);
+  const [err, setErr] = useState("");
+  const wanted = new Set(["heightCm", ...cond.categories.flatMap((c) => c.charts).filter((k) => ["sbp", "dbp", "hr", "weight"].includes(k))]);
+  const names = { sbp: "blood pressure (top number)", dbp: "blood pressure (bottom number)", hr: "resting heart rate", weight: "weight", heightCm: "height" };
+  const start = async () => {
+    setErr("");
+    setStage("asking");
+    try {
+      await healthConnect();
+      setStage("reading");
+      const byDate = healthRows(await healthRead(HEALTH_DAYS), wanted);
+      // Skip any day that already has that result (typed by hand or added before).
+      const have = new Set(entries.flatMap((e) => Object.keys(e).filter((k) => hasVal(e[k])).map((k) => `${e.date}|${k}`)));
+      const fresh = {};
+      const counts = {};
+      Object.entries(byDate).forEach(([date, vals]) => {
+        Object.entries(vals).forEach(([k, v]) => {
+          if (have.has(`${date}|${k}`)) return;
+          (fresh[date] = fresh[date] || {})[k] = v;
+          counts[k] = (counts[k] || 0) + 1;
+        });
+      });
+      setFound({ fresh, counts });
+      setStage("preview");
+    } catch (e) {
+      setErr("Apple Health couldn't be opened. You can try again, or keep adding results on the Add tab.");
+      setStage("intro");
+    }
+  };
+  const total = found ? Object.values(found.counts).reduce((a, b) => a + b, 0) : 0;
+  let body;
+  if (stage === "intro" || stage === "asking" || stage === "reading") {
+    body = (
+      <>
+        <h2 className="text-2xl font-bold mb-2">Apple Health</h2>
+        <p className="text-base mb-3">
+          {`${APP_INFO.name} can read your blood pressure, resting heart rate, weight and height from Apple Health and add them to your charts, one value per day, for the last 2 years.`}
+        </p>
+        <ul className="text-base mb-3" style={{ listStyle: "disc", paddingLeft: 20 }}>
+          <li className="mb-1">Your iPhone will ask which items to share. You can allow some and not others.</li>
+          <li className="mb-1">It only reads. Nothing is written to Apple Health, and nothing is sent to us or anyone else.</li>
+          <li className="mb-1">Days that already have a result are left as they are.</li>
+          <li>You can stop sharing anytime in the Health app: tap your picture, then Apps, then this app.</li>
+        </ul>
+        {err && <p className="text-sm mb-3" role="alert" style={{ color: C.error }}>{err}</p>}
+        <div className="flex gap-2">
+          <Button kind="secondary" onClick={onClose}>Not now</Button>
+          <Button onClick={start} disabled={stage !== "intro"}>
+            {stage === "asking" ? "Waiting for your iPhone…" : stage === "reading" ? "Reading Apple Health…" : "Connect Apple Health"}
+          </Button>
+        </div>
+      </>
+    );
+  } else if (stage === "preview") {
+    body = (
+      <>
+        <h2 className="text-2xl font-bold mb-2">{total ? "Ready to add" : "Nothing new to add"}</h2>
+        {total ? (
+          <>
+            <p className="text-base mb-2">These new results were found in Apple Health:</p>
+            <ul className="text-base mb-3" style={{ listStyle: "disc", paddingLeft: 20 }}>
+              {Object.entries(found.counts).map(([k, n]) => <li key={k}>{n === 1 ? `1 day of ${names[k]}` : `${n} days of ${names[k]}`}</li>)}
+            </ul>
+          </>
+        ) : (
+          <p className="text-base mb-3">
+            No new results were found. If you expected some, open the Health app, tap your picture, then Apps, choose this
+            app and turn on the items you want to share. Then try again.
+          </p>
+        )}
+        <div className="flex gap-2">
+          <Button kind="secondary" onClick={onClose}>{total ? "Cancel" : "Close"}</Button>
+          {total > 0 && <Button onClick={() => { onAdd(found.fresh); onClose(); }}>Add them</Button>}
+        </div>
+      </>
+    );
+  }
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4" style={{ background: C.scrim }}>
+      <div role="dialog" aria-modal="true" aria-label="Apple Health" className="fx-fade w-full max-w-xl rounded-lg p-5 overflow-y-auto"
+        style={{ background: C.surface, color: C.ink, maxHeight: "calc(100vh - 32px)", marginBottom: "env(safe-area-inset-bottom)" }}>
+        {body}
+      </div>
+    </div>
+  );
+}
+
 // ---------- Health record connection (SMART on FHIR, for Epic MyChart) ----------
 // The patient signs in on their health system's own MyChart page. The app gets read-only access,
 // downloads their lab results straight to this device, and never stores the access token.
@@ -3698,7 +3825,7 @@ function MoodSlider({ hint }) {
   );
 }
 
-function SettingsDialog({ theme, onTheme, region, onRegion, onTour, onTerms, onConnect, onContact, onReview, onPassword, onNewCode, lastImport, onClose }) {
+function SettingsDialog({ theme, onTheme, region, onRegion, onTour, onTerms, onConnect, onContact, onReview, onPassword, onNewCode, lastImport, onAppleHealth, lastHealth, onClose }) {
   const closeRef = useRef(null);
   const [bio, setBio] = useState({ can: false, on: bioEnabled(), busy: false, msg: "", err: false });
   useEffect(() => { bioAvailable().then((can) => setBio((b) => ({ ...b, can }))); }, []);
@@ -3808,7 +3935,10 @@ function SettingsDialog({ theme, onTheme, region, onRegion, onTour, onTerms, onC
         <section className="mb-5">
           <h3 className="text-base font-bold mb-1">Health record</h3>
           {NATIVE_APP ? (
-            <p className="text-sm" style={{ color: C.muted }}>Connecting a patient portal works on the website version of the app for now. You can keep adding your results on the Add tab.</p>
+            <>
+              <p className="text-sm" style={{ color: C.muted }}>Connecting a patient portal works on the website version of the app for now. You can keep adding your results on the Add tab.</p>
+              <AppleHealthCard onOpen={onAppleHealth} lastHealth={lastHealth} />
+            </>
           ) : region === "eu" ? (
             <p className="text-sm" style={{ color: C.muted }}>Connecting a patient portal is available in the United States only.</p>
           ) : (
@@ -6933,6 +7063,17 @@ function FabryTracker() {
     setToast({ text: `${eventName(g)} logged for today`, undo: () => setData((d) => ({ ...d, events: before })) });
   };
 
+  // Adds the days found in Apple Health (see AppleHealthDialog). One entry per day.
+  const [appleHealth, setAppleHealth] = useState(false);
+  const importHealth = (fresh) => {
+    const added = Object.entries(fresh).map(([date, vals]) => ({ id: uid(), date, ...vals, source: "record" }));
+    if (!added.length) return;
+    const ids = new Set(added.map((a) => a.id));
+    const n = added.reduce((a, e) => a + Object.keys(e).filter((k) => !["id", "date", "source"].includes(k)).length, 0);
+    setData((d) => ({ ...d, entries: [...d.entries, ...added], lastHealth: { date: today(), count: n } }));
+    setToast({ text: `${n} results added from Apple Health`, undo: () => setData((d) => ({ ...d, entries: d.entries.filter((e) => !ids.has(e.id)) })) });
+  };
+
   // Adds results downloaded from a health record. Returns how many were added.
   const importRecord = (fresh, recordProfile, systemName) => {
     const added = fresh.map((e) => ({ id: uid(), date: e.date, [e.metric]: e.value, fhirId: e.fhirId, source: "record" }));
@@ -8649,6 +8790,12 @@ function FabryTracker() {
               <ShareCard key={people.active} data={data} person={activePerson} />
             </div>
 
+            {IOS_APP && (
+              <section className="p-4 mb-5 rounded-lg" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
+                <h2 className="text-base font-bold mb-1">Apple Health</h2>
+                <AppleHealthCard onOpen={() => setAppleHealth(true)} lastHealth={data.lastHealth} />
+              </section>
+            )}
             {region !== "eu" && !NATIVE_APP && (
               <section className="p-4 mb-5 rounded-lg" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
                 <h2 className="text-base font-bold mb-1">Connect your health record</h2>
@@ -8803,6 +8950,7 @@ function FabryTracker() {
         onPassword={() => { setShowSettings(false); setShowPassword(true); }}
         onNewCode={() => { setShowSettings(false); setShowNewCode(true); }}
         onConnect={() => { setShowSettings(false); setConnect({ stage: "intro" }); }} lastImport={data.lastImport}
+        onAppleHealth={() => { setShowSettings(false); setAppleHealth(true); }} lastHealth={data.lastHealth}
         onClose={() => setShowSettings(false)} />}
       {connect && (
         <ConnectWizard connect={connect} setConnect={setConnect} region={region} units={units} profile={data.profile}
@@ -8830,6 +8978,7 @@ function FabryTracker() {
       {tourOn && <Tour onClose={() => { endTour(); setTab("trends"); }} onSample={loadSample} hasEntries={data.entries.length > 0}
         onTab={(t) => setTab((cur) => (cur === t ? cur : t))}
         quickLog={hasQuickLog(cond)} />}
+      {appleHealth && <AppleHealthDialog cond={cond} entries={data.entries} onAdd={importHealth} onClose={() => setAppleHealth(false)} />}
       <div className="sr-only" role="status" aria-live="polite">{spoken}</div>
       {toast && (
         <div className="fixed left-0 right-0 px-4 flex justify-center"

@@ -62,6 +62,11 @@ GitHub or to anyone else. The Learn tab sends only the chosen topic when it sear
   Summary button under each chart shows it and can read it aloud with the phone's own voice.
 - **Easier to see (Settings).** Text size (Standard, Large, Largest; charts too) and High contrast (darker text,
   stronger lines, thicker chart lines, clear focus outlines). Kept on the device only.
+- **Apple Health (iPhone app only, read only).** Settings and Profile offer "Connect Apple Health" next to the health
+  record connection. Only when the patient chooses it, the app reads blood pressure, resting heart rate, weight and
+  height (one average per day, last 2 years) and adds the days that don't already have that result. HealthDataPlugin
+  in SceneDelegate.swift; HealthKit entitlement in `ios-app/ios/App/App/App.entitlements`; NSHealthShareUsageDescription
+  in Info.plist. Nothing is written to Apple Health and nothing leaves the phone.
 - **Other:** buttons are at least 44 points tall; logging confirmations are announced to screen readers, stay up for
   8 seconds and give a short buzz on Android; the Android app follows the phone's font size; the journal mentions
   speaking entries with the keyboard microphone.

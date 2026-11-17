@@ -68,5 +68,7 @@
 	<true/>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Face ID opens your health record instead of typing your password. Your face data stays with your iPhone.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>If you choose to connect Apple Health, the app reads your blood pressure, resting heart rate, weight and height and adds them to your record on this iPhone. Nothing is sent to us or anyone else.</string>
 </dict>
 </plist>

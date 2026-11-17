@@ -1,6 +1,7 @@
 import UIKit
 import Capacitor
 import LocalAuthentication
+import HealthKit
 import Security
 
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
@@ -30,6 +31,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 class AppBridgeViewController: CAPBridgeViewController {
     override func capacitorDidLoad() {
         bridge?.registerPluginInstance(BiometricVaultPlugin())
+        bridge?.registerPluginInstance(HealthDataPlugin())
     }
 }
 
@@ -118,5 +120,94 @@ public class BiometricVaultPlugin: CAPPlugin, CAPBridgedPlugin {
         guard let key = call.getString("key") else { call.resolve(); return }
         SecItemDelete(baseQuery(key) as CFDictionary)
         call.resolve()
+    }
+}
+
+
+// Apple Health (read only), used by src/native.js when the patient chooses "Connect Apple Health".
+// It reads blood pressure, resting heart rate, weight and height, one value per day, and hands them to the page,
+// which adds them to the record on this phone. Nothing is written to Apple Health and nothing leaves the phone.
+@objc(HealthDataPlugin)
+public class HealthDataPlugin: CAPPlugin, CAPBridgedPlugin {
+    public let identifier = "HealthDataPlugin"
+    public let jsName = "HealthData"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "available", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "connect", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "read", returnType: CAPPluginReturnPromise),
+    ]
+    private let store = HKHealthStore()
+
+    private var readTypes: Set<HKObjectType> {
+        var types = Set<HKObjectType>()
+        let ids: [HKQuantityTypeIdentifier] = [.bloodPressureSystolic, .bloodPressureDiastolic, .restingHeartRate, .bodyMass, .height]
+        for id in ids { if let t = HKObjectType.quantityType(forIdentifier: id) { types.insert(t) } }
+        return types
+    }
+
+    @objc func available(_ call: CAPPluginCall) {
+        call.resolve(["available": HKHealthStore.isHealthDataAvailable()])
+    }
+
+    // Shows Apple's own permission sheet. iOS never tells apps which items the person allowed, so the page
+    // reads afterwards and simply finds nothing for items that were not allowed.
+    @objc func connect(_ call: CAPPluginCall) {
+        guard HKHealthStore.isHealthDataAvailable() else { call.reject("Apple Health isn't available on this device", "unavailable"); return }
+        store.requestAuthorization(toShare: nil, read: readTypes) { ok, error in
+            if ok { call.resolve() } else { call.reject(error?.localizedDescription ?? "Not allowed", "failed") }
+        }
+    }
+
+    private static let dayFormat: DateFormatter = {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
+    // One average per day for a quantity, over the last `days` days.
+    private func daily(_ id: HKQuantityTypeIdentifier, unit: HKUnit, days: Int, done: @escaping ([[String: Any]]) -> Void) {
+        guard let type = HKQuantityType.quantityType(forIdentifier: id) else { done([]); return }
+        let cal = Calendar.current
+        let end = Date()
+        let start = cal.startOfDay(for: cal.date(byAdding: .day, value: -days, to: end) ?? end)
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
+        let query = HKStatisticsCollectionQuery(quantityType: type, quantitySamplePredicate: predicate,
+                                                options: .discreteAverage, anchorDate: start,
+                                                intervalComponents: DateComponents(day: 1))
+        query.initialResultsHandler = { _, results, _ in
+            var out: [[String: Any]] = []
+            results?.enumerateStatistics(from: start, to: end) { stats, _ in
+                if let q = stats.averageQuantity() {
+                    out.append(["date": HealthDataPlugin.dayFormat.string(from: stats.startDate), "value": q.doubleValue(for: unit)])
+                }
+            }
+            done(out)
+        }
+        store.execute(query)
+    }
+
+    @objc func read(_ call: CAPPluginCall) {
+        guard HKHealthStore.isHealthDataAvailable() else { call.reject("Apple Health isn't available on this device", "unavailable"); return }
+        let days = min(max(call.getInt("days") ?? 730, 1), 3650)
+        let group = DispatchGroup()
+        var result: [String: Any] = [:]
+        let lock = NSLock()
+        let jobs: [(String, HKQuantityTypeIdentifier, HKUnit)] = [
+            ("sbp", .bloodPressureSystolic, .millimeterOfMercury()),
+            ("dbp", .bloodPressureDiastolic, .millimeterOfMercury()),
+            ("hr", .restingHeartRate, HKUnit.count().unitDivided(by: .minute())),
+            ("weightKg", .bodyMass, .gramUnit(with: .kilo)),
+            ("heightCm", .height, .meterUnit(with: .centi)),
+        ]
+        for (key, id, unit) in jobs {
+            group.enter()
+            daily(id, unit: unit, days: days) { rows in
+                lock.lock(); result[key] = rows; lock.unlock()
+                group.leave()
+            }
+        }
+        group.notify(queue: .main) { call.resolve(result) }
     }
 }
