@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import WatchConnectivity
 import WatchKit
 
@@ -28,7 +29,9 @@ struct WatchConfig: Codable, Equatable {
     var ui: [String: String]
 }
 
-// Keeps the setup from the phone and sends what the patient logs back to the phone.
+// Keeps the setup from the phone and sends what the patient logs back to the phone. Runs on the main thread;
+// the WatchConnectivity callbacks below hop over to it.
+@MainActor
 final class WatchStore: NSObject, ObservableObject, WCSessionDelegate {
     @Published var config: WatchConfig?
     // What was logged since the app opened, newest first. Kept only in memory: health details aren't saved on the watch.
@@ -56,13 +59,18 @@ final class WatchStore: NSObject, ObservableObject, WCSessionDelegate {
         return english
     }
 
-    private func use(_ context: [String: Any]) {
-        guard let json = context["config"] as? String, let data = json.data(using: .utf8),
+    private func use(_ json: String?) {
+        guard let json = json, let data = json.data(using: .utf8),
               let cfg = try? JSONDecoder().decode(WatchConfig.self, from: data) else { return }
-        DispatchQueue.main.async {
-            self.config = cfg
-            UserDefaults.standard.set(data, forKey: self.configKey)
-        }
+        config = cfg
+        UserDefaults.standard.set(data, forKey: configKey)
+    }
+
+    private func sendWaiting() {
+        guard WCSession.default.activationState == .activated else { return }
+        let queued = waiting
+        waiting = []
+        queued.forEach { WCSession.default.transferUserInfo($0) }
     }
 
     private static let dayFormat: DateFormatter = {
@@ -106,18 +114,17 @@ final class WatchStore: NSObject, ObservableObject, WCSessionDelegate {
         send(["kind": "voice", "ask": ask, "text": clean], recentText: "“\(clean)”")
     }
 
-    // ---- WCSessionDelegate ----
-    func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
-        use(session.receivedApplicationContext)
-        guard activationState == .activated else { return }
-        DispatchQueue.main.async {
-            let queued = self.waiting
-            self.waiting = []
-            queued.forEach { session.transferUserInfo($0) }
+    // ---- WCSessionDelegate (called on a background thread) ----
+    nonisolated func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
+        let json = session.receivedApplicationContext["config"] as? String
+        Task { @MainActor in
+            self.use(json)
+            self.sendWaiting()
         }
     }
 
-    func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
-        use(applicationContext)
+    nonisolated func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
+        let json = applicationContext["config"] as? String
+        Task { @MainActor in self.use(json) }
     }
 }

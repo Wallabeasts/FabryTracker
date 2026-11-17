@@ -59,7 +59,7 @@ struct ScoreView: View {
                         Button {
                             store.logScore(score, n)
                             done = n
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { dismiss() }
+                            Task { try? await Task.sleep(nanoseconds: 1_200_000_000); dismiss() }
                         } label: {
                             Text("\(n)").font(.title3.bold()).frame(maxWidth: .infinity, minHeight: 36)
                         }
@@ -92,7 +92,7 @@ struct EventGroupView: View {
                 Button {
                     store.logEvent(type)
                     done = type.id
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { dismiss() }
+                    Task { try? await Task.sleep(nanoseconds: 1_200_000_000); dismiss() }
                 } label: {
                     HStack {
                         Text(type.label).font(.headline)
@@ -138,7 +138,7 @@ struct VoiceView: View {
                     Button {
                         store.logVoice(said, ask: ask)
                         sent = true
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { dismiss() }
+                        Task { try? await Task.sleep(nanoseconds: 2_500_000_000); dismiss() }
                     } label: {
                         Text(store.t("send", "Send")).frame(maxWidth: .infinity, minHeight: 44)
                     }
