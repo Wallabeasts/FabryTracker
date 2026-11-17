@@ -41,9 +41,11 @@ document.documentElement.setAttribute("data-mood", /^[1-5]$/.test(mood) ? mood :
 try {
   const size = window.localStorage.getItem(TEXT_KEY);
   if (size === "large" || size === "largest") document.documentElement.setAttribute("data-text", size);
-  if (window.localStorage.getItem(CONTRAST_KEY) === "high") document.documentElement.setAttribute("data-contrast", "high");
+  // High contrast is the default; it's off only if the patient turned it off (saved as "normal").
+  if (window.localStorage.getItem(CONTRAST_KEY) !== "normal") document.documentElement.setAttribute("data-contrast", "high");
 } catch (e) {
-  // storage blocked: standard look
+  // storage blocked: standard text size, high contrast (the default)
+  document.documentElement.setAttribute("data-contrast", "high");
 }
 
 // Keep the browser's "install app" prompt so Settings can offer an Install button.
