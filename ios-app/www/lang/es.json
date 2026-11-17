@@ -3064,5 +3064,8 @@
   "No se ha borrado nada. Lo que estaba guardado sigue en este teléfono, y la app ha conservado una copia.",
   "Cierre la app y ábrala de nuevo, o toque Intentar de nuevo.",
   "Si sigue viendo esto, puede empezar con un registro vacío y recuperar su información desde un archivo de copia de seguridad (Configuración y luego Restaurar desde una copia de seguridad).",
-  "Empezar con un registro vacío"
+  "Empezar con un registro vacío",
+  "{0} está desactivado para esta app. Para usarlo, abra la app Configuración del iPhone, toque {1} y código, luego Otras apps, y active My RDT.",
+  "{0} está bloqueado tras demasiados intentos. Desbloquee su iPhone con su código y vuelva aquí.",
+  "Para iniciar sesión con {0}, primero configúrelo en la app Configuración del iPhone, en {1} y código."
 ]

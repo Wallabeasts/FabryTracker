@@ -133,10 +133,21 @@ function prefsLike(plugin, method, options) {
   });
 }
 
+// Why Face ID / Touch ID can't be used right now (iPhone): "denied" (turned off for this app in iPhone Settings),
+// "notEnrolled", "noPasscode", "lockout", "none" (no Face ID on this phone), or "" when it can be used.
+let bioReason = "";
+let bioDevice = "";
+export const nativeBioReason = () => bioReason;
+export const nativeBioDevice = () => bioDevice; // "faceID" or "touchID" even when it can't be used right now
 // Which kind of check this phone app offers: "faceID", "touchID", "biometric", or "" when none is set up.
 export async function nativeBioType() {
   try {
-    if (IOS_APP) { const r = await iosCall("available"); return r && r.available ? r.type || "faceID" : ""; }
+    if (IOS_APP) {
+      const r = await iosCall("available");
+      bioReason = (r && !r.available && r.reason) || (r && r.available ? "" : "none");
+      bioDevice = (r && r.type) || "";
+      return r && r.available ? r.type || "faceID" : "";
+    }
     const b = androidBio();
     if (b && typeof b.available === "function") return b.available() === "yes" ? "biometric" : "";
   } catch (e) { /* none */ }

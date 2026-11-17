@@ -3064,5 +3064,8 @@
   "Es wurde nichts gelöscht. Das Gespeicherte ist weiterhin auf diesem Handy, und die App hat eine Kopie davon aufbewahrt.",
   "Schließen Sie die App und öffnen Sie sie erneut, oder tippen Sie auf Erneut versuchen.",
   "Wenn Sie dies weiterhin sehen, können Sie mit einer leeren Akte beginnen und Ihre Daten aus einer Sicherungsdatei zurückholen (Einstellungen, dann Aus einer Sicherung wiederherstellen).",
-  "Mit einer leeren Akte beginnen"
+  "Mit einer leeren Akte beginnen",
+  "{0} ist für diese App ausgeschaltet. Öffnen Sie dazu die Einstellungen-App Ihres iPhone, tippen Sie auf {1} & Code, dann auf Andere Apps, und schalten Sie My RDT ein.",
+  "{0} ist nach zu vielen Versuchen gesperrt. Entsperren Sie Ihr iPhone mit dem Code und kommen Sie dann hierher zurück.",
+  "Um sich mit {0} anzumelden, richten Sie es zuerst in der Einstellungen-App Ihres iPhone unter {1} & Code ein."
 ]

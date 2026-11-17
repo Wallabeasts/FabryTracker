@@ -3064,5 +3064,8 @@
   "Nada foi apagado. O que estava salvo continua neste celular, e o app guardou uma cópia.",
   "Feche o app e abra de novo, ou toque em Tentar novamente.",
   "Se continuar vendo isto, você pode começar com um registro vazio e recuperar suas informações de um arquivo de backup (Configurações e depois Restaurar a partir de um backup).",
-  "Começar com um registro vazio"
+  "Começar com um registro vazio",
+  "{0} está desativado para este app. Para usar, abra o app Ajustes do iPhone, toque em {1} e Código, depois em Outros Apps, e ative o My RDT.",
+  "{0} está bloqueado após muitas tentativas. Desbloqueie o iPhone com o código e volte aqui.",
+  "Para entrar com {0}, primeiro configure no app Ajustes do iPhone, em {1} e Código."
 ]

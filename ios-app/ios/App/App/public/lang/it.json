@@ -3064,5 +3064,8 @@
   "Non è stato eliminato nulla. Ciò che era salvato è ancora su questo telefono e l'app ne ha conservato una copia.",
   "Chiudi l'app e riaprila, oppure tocca Riprova.",
   "Se continui a vedere questo messaggio, puoi iniziare con un registro vuoto e recuperare le tue informazioni da un file di backup (Impostazioni, poi Ripristina da un backup).",
-  "Inizia con un registro vuoto"
+  "Inizia con un registro vuoto",
+  "{0} è disattivato per questa app. Per usarlo, apri l'app Impostazioni dell'iPhone, tocca {1} e codice, poi Altre app, e attiva My RDT.",
+  "{0} è bloccato dopo troppi tentativi. Sblocca l'iPhone con il codice, poi torna qui.",
+  "Per accedere con {0}, configuralo prima nell'app Impostazioni dell'iPhone, in {1} e codice."
 ]

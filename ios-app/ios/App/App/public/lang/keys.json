@@ -3064,5 +3064,8 @@
   "Nothing has been deleted. What was saved is still on this phone, and the app has kept a copy of it.",
   "Close the app and open it again, or tap Try again.",
   "If you keep seeing this, you can start with an empty record and bring your information back from a backup file (Settings, then Restore from a backup).",
-  "Start with an empty record"
+  "Start with an empty record",
+  "{0} is turned off for this app. To use it, open your iPhone's Settings app, tap {1} & Passcode, then Other Apps, and turn on My RDT.",
+  "{0} is locked after too many tries. Unlock your iPhone with its passcode, then come back here.",
+  "To log in with {0}, first set it up in your iPhone's Settings app, under {1} & Passcode."
 ]

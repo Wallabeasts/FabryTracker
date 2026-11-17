@@ -1,4 +1,4 @@
-import { NATIVE_APP, nativeBioType, nativeBioSave, nativeBioLoad, nativeBioRemove } from "./native.js";
+import { NATIVE_APP, IOS_APP, nativeBioType, nativeBioSave, nativeBioLoad, nativeBioRemove } from "./native.js";
 // The account on this phone. Passwords and recovery codes never leave the device and are never stored.
 //
 // The record is encrypted (AES-GCM) with a random record key. That key is saved twice, each copy locked with a key
@@ -239,7 +239,11 @@ export async function enableBio(prompt) {
     const secret = rand(32);
     try {
       await nativeBioSave(NATIVE_BIO_KEY, toB64(secret), prompt);
+      // iPhone: check it right away. This is when iPhone asks to allow Face ID for the app, and it proves that
+      // logging in with it will work before it's offered on the login screen.
+      if (IOS_APP && (await nativeBioLoad(NATIVE_BIO_KEY, prompt)) !== toB64(secret)) throw new Error("failed");
     } catch (e) {
+      if (IOS_APP) nativeBioRemove(NATIVE_BIO_KEY);
       throw new Error(e.message === "cancelled" ? "cancelled" : "failed");
     }
     const wrapped = await encryptBytes(await prfKey(secret), vault.raw);

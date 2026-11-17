@@ -8,13 +8,10 @@ import WatchConnectivity
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
 
+    // The window comes from Main.storyboard, whose view controller is AppBridgeViewController (below), so there is
+    // exactly one web view and it has the Face ID, Apple Health and Apple Watch plugins.
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
-        guard let windowScene = scene as? UIWindowScene else { return }
-
-        window = UIWindow(windowScene: windowScene)
-        window?.rootViewController = AppBridgeViewController()
-        window?.makeKeyAndVisible()
-
+        guard scene is UIWindowScene else { return }
         SceneDelegateProxy.shared.scene(scene, willConnectTo: session, options: connectionOptions)
     }
 
@@ -28,7 +25,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 }
 
 
-// The app's web view, plus the Face ID plugin below.
+// The app's web view, plus the plugins below. Main.storyboard uses this class.
 class AppBridgeViewController: CAPBridgeViewController {
     override func capacitorDidLoad() {
         bridge?.registerPluginInstance(BiometricVaultPlugin())
@@ -58,14 +55,24 @@ public class BiometricVaultPlugin: CAPPlugin, CAPBridgedPlugin {
         var error: NSError?
         let ok = context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error)
         var type = ""
-        if ok {
-            switch context.biometryType {
-            case .faceID: type = "faceID"
-            case .touchID: type = "touchID"
-            default: type = "biometric"
+        switch context.biometryType {
+        case .faceID: type = "faceID"
+        case .touchID: type = "touchID"
+        case LABiometryType.none: type = ""
+        default: type = "biometric"
+        }
+        // Why it can't be used, so the app can say what to do.
+        var reason = ""
+        if !ok, let code = error?.code {
+            switch code {
+            case LAError.biometryNotEnrolled.rawValue: reason = "notEnrolled"
+            case LAError.passcodeNotSet.rawValue: reason = "noPasscode"
+            case LAError.biometryNotAvailable.rawValue: reason = type.isEmpty ? "none" : "denied"
+            case LAError.biometryLockout.rawValue: reason = "lockout"
+            default: reason = "none"
             }
         }
-        call.resolve(["available": ok, "type": type])
+        call.resolve(["available": ok, "type": type, "reason": reason])
     }
 
     private func baseQuery(_ key: String) -> [String: Any] {

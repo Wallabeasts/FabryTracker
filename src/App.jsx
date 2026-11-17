@@ -7,7 +7,7 @@ import {
   createAccount, logIn, logOut, changePassword, resetPassword, replaceRecoveryCode, eraseEverything, bioAvailable, bioEnabled, enableBio, disableBio, bioLogIn, bioKind, readAccount, isProtectedKey, cryptoAvailable, currentUser,
 } from "./vault.js";
 import { checkPassword } from "./passwords.js";
-import { NATIVE_APP, IOS_APP, saveFileInApp, healthAvailable, healthConnect, healthRead, watchStatus, watchSetup, watchPending, watchClear } from "./native.js";
+import { NATIVE_APP, IOS_APP, saveFileInApp, healthAvailable, healthConnect, healthRead, watchStatus, watchSetup, watchPending, watchClear, nativeBioReason, nativeBioDevice } from "./native.js";
 import { makeVoiceParser } from "./voice.js";
 import { labInfo } from "./labInfo.js";
 import { ALERT_EVERY_DAYS, alertDue, cleanWatch, countryName, countryOptions, fetchEnrolling, matchTrials } from "./trialAlerts.js";
@@ -4006,8 +4006,12 @@ function MoodSlider({ hint }) {
 
 function SettingsDialog({ theme, onTheme, region, onRegion, onTour, onTerms, onConnect, onContact, onReview, onPassword, onNewCode, lastImport, onAppleHealth, lastHealth, onClose }) {
   const closeRef = useRef(null);
-  const [bio, setBio] = useState({ can: false, on: bioEnabled(), busy: false, msg: "", err: false });
-  useEffect(() => { bioAvailable().then((can) => setBio((b) => ({ ...b, can }))); }, []);
+  const [bio, setBio] = useState({ can: false, on: bioEnabled(), busy: false, msg: "", err: false, why: "" });
+  useEffect(() => {
+    bioAvailable().then((can) => setBio((b) => ({ ...b, can, why: can ? "" : (IOS_APP ? nativeBioReason() : "") })));
+  }, []);
+  // iPhone app: when Face ID can't be used, say how to fix it instead of hiding the option.
+  const bioWhy = { denied: "denied", notEnrolled: "notEnrolled", noPasscode: "notEnrolled", lockout: "lockout" }[bio.why] || "";
   const turnOnBio = async () => {
     setBio((b) => ({ ...b, busy: true, msg: "" }));
     try {
@@ -4055,6 +4059,17 @@ function SettingsDialog({ theme, onTheme, region, onRegion, onTour, onTerms, onC
             <Button kind="secondary" onClick={onPassword}>Change password</Button>
             <Button kind="secondary" onClick={onNewCode}>New recovery code</Button>
           </div>
+          {!bio.can && !bio.on && bioWhy && (
+            <div className="mt-3 pt-3" data-bio style={{ borderTop: `1px solid ${C.line}` }}>
+              <p className="text-sm" style={{ color: C.muted }}>
+                {bioWhy === "denied"
+                  ? `${nativeBioDevice() === "touchID" ? "Touch ID" : "Face ID"} is turned off for this app. To use it, open your iPhone's Settings app, tap Face ID & Passcode, then Other Apps, and turn on My RDT.`
+                  : bioWhy === "lockout"
+                    ? `${nativeBioDevice() === "touchID" ? "Touch ID" : "Face ID"} is locked after too many tries. Unlock your iPhone with its passcode, then come back here.`
+                    : `To log in with ${nativeBioDevice() === "touchID" ? "Touch ID" : "Face ID"}, first set it up in your iPhone's Settings app, under Face ID & Passcode.`}
+              </p>
+            </div>
+          )}
           {(bio.can || bio.on) && (
             <div className="mt-3 pt-3" data-bio style={{ borderTop: `1px solid ${C.line}` }}>
               <p className="text-sm mb-2" style={{ color: C.muted }}>
