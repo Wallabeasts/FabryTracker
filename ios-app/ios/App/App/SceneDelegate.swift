@@ -3,6 +3,7 @@ import Capacitor
 import LocalAuthentication
 import HealthKit
 import Security
+import WatchConnectivity
 
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
@@ -32,6 +33,8 @@ class AppBridgeViewController: CAPBridgeViewController {
     override func capacitorDidLoad() {
         bridge?.registerPluginInstance(BiometricVaultPlugin())
         bridge?.registerPluginInstance(HealthDataPlugin())
+        bridge?.registerPluginInstance(WatchSyncPlugin())
+        WatchLink.shared.start()
     }
 }
 
@@ -209,5 +212,129 @@ public class HealthDataPlugin: CAPPlugin, CAPBridgedPlugin {
             }
         }
         group.notify(queue: .main) { call.resolve(result) }
+    }
+}
+
+
+// Apple Watch, used by src/native.js. The phone sends the watch its Quick Log buttons (the current disease, in the
+// patient's language). The watch sends back what was tapped or said, directly from the watch to this iPhone over
+// WatchConnectivity: never through a server. Entries wait in a small file in the app's own storage until the patient
+// opens and unlocks the app, which then adds them to the encrypted record and deletes them here.
+final class WatchLink: NSObject, WCSessionDelegate {
+    static let shared = WatchLink()
+    private let queue = DispatchQueue(label: "com.myrarediseasetracker.app.watch")
+    private var lastConfig: String?
+
+    private var fileURL: URL {
+        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("watch-pending.json")
+    }
+
+    func start() {
+        guard WCSession.isSupported() else { return }
+        let session = WCSession.default
+        if session.delegate == nil { session.delegate = self }
+        if session.activationState != .activated { session.activate() }
+    }
+
+    var status: [String: Any] {
+        guard WCSession.isSupported() else { return ["paired": false, "installed": false] }
+        let s = WCSession.default
+        return ["paired": s.isPaired, "installed": s.isWatchAppInstalled]
+    }
+
+    // The newest Quick Log setup. Kept so it can be sent again once the watch app is installed.
+    func setConfig(_ json: String) {
+        lastConfig = json
+        sendConfig()
+    }
+    private func sendConfig() {
+        guard let json = lastConfig, WCSession.isSupported() else { return }
+        let s = WCSession.default
+        guard s.activationState == .activated, s.isPaired, s.isWatchAppInstalled else { return }
+        try? s.updateApplicationContext(["config": json])
+    }
+
+    // ---- Entries waiting for the app ----
+    func readPending() -> [[String: Any]] {
+        return queue.sync { self.load() }
+    }
+    func clear(_ ids: Set<String>) {
+        queue.sync {
+            let left = self.load().filter { !ids.contains(($0["id"] as? String) ?? "") }
+            self.save(left)
+        }
+    }
+    private func load() -> [[String: Any]] {
+        guard let data = try? Data(contentsOf: fileURL),
+              let list = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return [] }
+        return list
+    }
+    private func save(_ list: [[String: Any]]) {
+        guard let data = try? JSONSerialization.data(withJSONObject: list) else { return }
+        // Readable after the phone's first unlock since restart, so entries can arrive while the phone is locked.
+        try? data.write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+    }
+    private func add(_ item: [String: Any]) {
+        // Only the fields the app uses, with sensible limits.
+        guard let id = item["id"] as? String, !id.isEmpty, id.count <= 64,
+              let kind = item["kind"] as? String, ["score", "event", "voice"].contains(kind) else { return }
+        var clean: [String: Any] = ["id": id, "kind": kind]
+        for key in ["person", "date", "metric", "type", "ask"] {
+            if let v = item[key] as? String, v.count <= 64 { clean[key] = v }
+        }
+        if let v = item["value"] as? NSNumber { clean["value"] = v }
+        if let t = item["text"] as? String { clean["text"] = String(t.prefix(600)) }
+        queue.sync {
+            var list = self.load()
+            if list.contains(where: { ($0["id"] as? String) == id }) { return }
+            list.append(clean)
+            self.save(Array(list.suffix(500)))
+        }
+    }
+
+    // ---- WCSessionDelegate ----
+    func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
+        sendConfig()
+    }
+    func sessionDidBecomeInactive(_ session: WCSession) {}
+    func sessionDidDeactivate(_ session: WCSession) { session.activate() }
+    func sessionWatchStateDidChange(_ session: WCSession) { sendConfig() }
+    func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) { add(userInfo) }
+}
+
+@objc(WatchSyncPlugin)
+public class WatchSyncPlugin: CAPPlugin, CAPBridgedPlugin {
+    public let identifier = "WatchSyncPlugin"
+    public let jsName = "WatchSync"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "status", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setup", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "pending", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "clear", returnType: CAPPluginReturnPromise),
+    ]
+
+    @objc func status(_ call: CAPPluginCall) {
+        call.resolve(WatchLink.shared.status)
+    }
+
+    @objc func setup(_ call: CAPPluginCall) {
+        guard let json = call.getString("config"), json.count < 200_000 else { call.reject("Missing setup", "failed"); return }
+        WatchLink.shared.setConfig(json)
+        call.resolve()
+    }
+
+    @objc func pending(_ call: CAPPluginCall) {
+        let list = WatchLink.shared.readPending()
+        let data = (try? JSONSerialization.data(withJSONObject: list)) ?? Data("[]".utf8)
+        call.resolve(["items": String(data: data, encoding: .utf8) ?? "[]"])
+    }
+
+    @objc func clear(_ call: CAPPluginCall) {
+        guard let json = call.getString("ids"), let data = json.data(using: .utf8),
+              let ids = try? JSONSerialization.jsonObject(with: data) as? [String] else { call.resolve(); return }
+        WatchLink.shared.clear(Set(ids))
+        call.resolve()
     }
 }

@@ -49,6 +49,23 @@ GitHub or to anyone else. The Learn tab sends only the chosen topic when it sear
 - The page includes a content security policy that only allows it to contact ClinicalTrials.gov, PubMed and
   Google Fonts.
 
+## Apple Watch app (3.29)
+
+- **What it does:** the Quick Log on the wrist (the 1-to-10 scores and one-tap events of the disease chosen in the
+  profile), plus "Say a lab result" and "Say a medicine change" by voice. The phone sends the watch its buttons, already
+  translated, so the watch always matches the profile's disease and language.
+- **How data moves:** directly from the watch to the iPhone over Apple's WatchConnectivity (`transferUserInfo`), never
+  through a server. On the phone, `WatchLink` in `SceneDelegate.swift` keeps arrivals in `watch-pending.json` in the app's
+  own storage until the app is opened and unlocked; then `src/App.jsx` adds taps to the record (toast with Undo) and
+  deletes them from that file. The watch keeps only its button setup; what was logged is held in memory only.
+- **Voice entries are always checked before saving.** `src/voice.js` reads the words ("creatinine 1.4", "started Lyrica
+  75 mg twice a day", "Fabrazyme dose now 1.2 mg/kg", "stopped gabapentin") and the "From your Apple Watch" dialog shows
+  what it understood, with a date for each, before anything goes into the record. Anything not understood is shown too.
+  Units said aloud are converted ("124 micromoles per liter"); if none is heard, the patient's usual unit is shown and
+  flagged.
+- **Watch app source:** `ios-app/ios/App/watch-app-source/` (three SwiftUI files). The watch target is added once in Xcode;
+  see the README in that folder.
+
 ## Accessibility and Face ID in the apps (3.28)
 
 - **Face ID / fingerprint in the phone apps.** The iPhone app keeps a random secret in the Keychain, in an item that

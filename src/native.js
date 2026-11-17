@@ -164,3 +164,32 @@ export async function healthAvailable() {
 export const healthConnect = () => prefsLike("HealthData", "connect", {});
 // Returns { sbp, dbp, hr, weightKg, heightCm }: lists of { date: "YYYY-MM-DD", value } (one average per day).
 export const healthRead = (days = 730) => prefsLike("HealthData", "read", { days });
+
+// ---------- Apple Watch (iPhone app only) ----------
+// WatchSyncPlugin in SceneDelegate.swift. The phone tells the watch which Quick Log buttons to show (the current
+// disease, in the patient's language). The watch sends back what was logged, straight from the watch to this iPhone
+// over Apple's WatchConnectivity link: never through a server. Entries wait in the app's own storage on the phone
+// until the record is unlocked; then they are added (taps) or shown to the patient to check (spoken entries).
+// Returns { paired, installed } or null outside the iPhone app.
+export async function watchStatus() {
+  if (!IOS_APP) return null;
+  try { const r = await prefsLike("WatchSync", "status", {}); return r || null; } catch (e) { return null; }
+}
+export async function watchSetup(config) {
+  if (!IOS_APP) return;
+  try { await prefsLike("WatchSync", "setup", { config: JSON.stringify(config) }); } catch (e) { /* no watch */ }
+}
+// Entries waiting from the watch: a list of { id, person, date, kind, ... }.
+export async function watchPending() {
+  if (!IOS_APP) return [];
+  try {
+    const r = await prefsLike("WatchSync", "pending", {});
+    const items = JSON.parse((r && r.items) || "[]");
+    return Array.isArray(items) ? items.filter((x) => x && typeof x === "object") : [];
+  } catch (e) { return []; }
+}
+// Forgets entries once they're in the record (or the patient chose not to keep them).
+export async function watchClear(ids) {
+  if (!IOS_APP || !ids.length) return;
+  try { await prefsLike("WatchSync", "clear", { ids: JSON.stringify(ids) }); } catch (e) { /* try again next time */ }
+}

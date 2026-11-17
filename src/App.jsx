@@ -7,7 +7,8 @@ import {
   createAccount, logIn, logOut, changePassword, resetPassword, replaceRecoveryCode, eraseEverything, bioAvailable, bioEnabled, enableBio, disableBio, bioLogIn, bioKind, readAccount, isProtectedKey, cryptoAvailable, currentUser,
 } from "./vault.js";
 import { checkPassword } from "./passwords.js";
-import { NATIVE_APP, IOS_APP, saveFileInApp, healthAvailable, healthConnect, healthRead } from "./native.js";
+import { NATIVE_APP, IOS_APP, saveFileInApp, healthAvailable, healthConnect, healthRead, watchStatus, watchSetup, watchPending, watchClear } from "./native.js";
+import { makeVoiceParser } from "./voice.js";
 import { labInfo } from "./labInfo.js";
 import { ALERT_EVERY_DAYS, alertDue, cleanWatch, countryName, countryOptions, fetchEnrolling, matchTrials } from "./trialAlerts.js";
 import { LANGS, currentLang, dateLocale, dyn, setLanguage, setConditionNames, tr } from "./i18n.js";
@@ -19,7 +20,7 @@ setConditionNames([...CONDITIONS.flatMap((c) => [c.name, c.short]), "Face ID or 
 // App name and developer details. Edit these to change the About section.
 const APP_INFO = {
   name: "My Rare Disease Tracker",
-  version: "3.28",
+  version: "3.29",
   contactEmail: "customerservice@myrarediseasetracker.com", // where the Contact us button sends email
   // App reviews go to a Google Form owned by rarediseasetracker@gmail.com. Fill these in from the form's
   // pre-filled link (see README). While formId is empty, Send opens an email with the review instead.
@@ -2641,6 +2642,174 @@ function AppleHealthDialog({ cond, entries, onAdd, onClose }) {
         {body}
       </div>
     </div>
+  );
+}
+
+// ---------- Apple Watch (iPhone app) ----------
+// The watch shows this disease's Quick Log, plus "Say a lab result" and "Say a medicine change". Everything on the
+// watch is in the patient's language because the phone sends the words, already translated.
+const WATCH_UI = {
+  title: "Quick log", tapNumber: "Tap a number", logged: "Logged",
+  savedNote: "Saved on your watch. It's added when you next open the app on your iPhone.",
+  speakLab: "Say a lab result", speakMed: "Say a medicine change",
+  labHint: "Say the test and its result, like: creatinine 1.2",
+  medHint: "Say the medicine's name, and whether you started it, stopped it or changed the dose.",
+  speak: "Speak", send: "Send", again: "Try again", youSaid: "You said",
+  checkOnPhone: "You'll check it on your iPhone before it's saved.", recent: "Recent", byVoice: "By voice",
+  outOf10: "out of 10",
+};
+function watchConfig(cond, person, family) {
+  return {
+    v: 1, person: person.id, who: family ? String(person.name || "") : "", disease: tr(cond.name),
+    scores: quickScores(cond).map((r) => ({ id: r.id, label: tr(r.name || (metricById(r.id) || {}).short || r.id),
+      prompt: tr(r.prompt || ""), min: r.min === 0 ? 0 : 1 })),
+    groups: condEventGroups(cond).map((g) => ({ title: tr(g.title), types: g.list.map((t) => ({ id: t.id, label: tr(t.label) })) })),
+    ui: Object.fromEntries(Object.entries(WATCH_UI).map(([k, v]) => [k, tr(v)])),
+  };
+}
+// Watch entries use their own ids, so one is never added twice.
+const watchId = (it) => `w${String(it.id).replace(/[^A-Za-z0-9]/g, "").slice(0, 32)}`;
+const isDay = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !isNaN(toT(v)) && v <= today();
+// Adds one tap from the watch (a 1-to-10 score or an event) to a record, the same way the Quick Log on the phone does.
+function addWatchTap(d, it) {
+  const id = watchId(it);
+  if (!isDay(it.date) || (d.entries || []).some((e) => e.id === id) || (d.events || []).some((e) => e.id === id)) return d;
+  const cond = condOf(d);
+  if (it.kind === "score") {
+    const row = quickScores(cond).find((r) => r.id === it.metric);
+    const n = Number(it.value);
+    if (!row || !Number.isInteger(n) || n < (row.min === 0 ? 0 : 1) || n > 10) return d;
+    return { ...d, entries: [...d.entries, { id, date: it.date, [it.metric]: n }] };
+  }
+  if (it.kind === "event") {
+    const grp = condEventGroups(cond).find((g) => g.types.includes(it.type));
+    if (!grp || !GI.some((g) => g.id === it.type)) return d;
+    const keep = (d.events || []).filter((e) => !(e.date === it.date
+      && ((grp.daily && grp.types.includes(e.type)) || (grp.perTypeDaily && e.type === it.type))));
+    return { ...d, events: [...keep, { id, date: it.date, type: it.type }] };
+  }
+  return d;
+}
+
+// Shows what was said on the watch, as the app understood it, so the patient can check it before it's saved.
+function WatchReviewDialog({ items, records, people, units, onSave, onLater }) {
+  const parsers = useMemo(() => ({}), []);
+  const parserFor = (cond, meds) => {
+    const key = `${cond.id}|${meds.map((m) => m.id + (m.customName || "")).join(",")}|${currentLang()}`;
+    if (!parsers[key]) {
+      const medList = [
+        ...cond.meds.map((id) => MEDS.find((m) => m.id === id)).filter((m) => m && m.id !== "custom"),
+        ...meds.filter((m) => m.med === "custom" && (m.customName || "").trim()).map((m) => ({ id: `rec:${m.id}`, name: m.customName })),
+      ];
+      parsers[key] = makeVoiceParser({
+        metrics: METRICS.filter((m) => !m.kind && m.unit && m.id !== "heightCm"),
+        meds: medList, unitOptions, regionUnit: (m) => units.unit(m), tr,
+      });
+    }
+    return parsers[key];
+  };
+  const [rows, setRows] = useState(() => items.flatMap((it) => {
+    const rec = records[it.person] || records[Object.keys(records)[0]];
+    const meds = (rec.meds || []).map((m) => (m.med === "custom" ? { ...m, med: `rec:${m.id}` } : m));
+    const found = parserFor(condOf(rec), rec.meds || [])(it.text, meds);
+    return found.map((f, i) => ({ key: `${it.id}-${i}`, item: it, f, on: f.type !== "unknown", date: isDay(it.date) ? it.date : today() }));
+  }));
+  const set = (key, ch) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...ch } : r)));
+  const medName = (f) => {
+    if (f.med.startsWith("rec:")) {
+      const id = f.med.slice(4);
+      const m = Object.values(records).flatMap((r) => r.meds || []).find((x) => x.id === id);
+      return m ? m.customName : "";
+    }
+    const d = MEDS.find((m) => m.id === f.med);
+    return d ? d.name : f.med;
+  };
+  const chosen = rows.filter((r) => r.on && r.f.type !== "unknown");
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4" style={{ background: C.scrim }}>
+      <div role="dialog" aria-modal="true" aria-label="From your Apple Watch" className="fx-fade w-full max-w-xl rounded-lg p-5 overflow-y-auto"
+        style={{ background: C.surface, color: C.ink, maxHeight: "calc(100vh - 32px)", marginBottom: "env(safe-area-inset-bottom)" }}>
+        <h2 className="text-2xl font-bold mb-2">From your Apple Watch</h2>
+        <p className="text-base mb-3">You said these on your Apple Watch. Check each one before it's saved: dictation can mishear a number or a name.</p>
+        {rows.map((r) => {
+          const m = r.f.type === "lab" ? metricById(r.f.metric) : null;
+          const who = people.length > 1 ? String((people.find((p) => p.id === r.item.person) || {}).name || "") : "";
+          return (
+            <div key={r.key} className="p-3 mb-3 rounded-lg" style={{ border: `1px solid ${C.line}` }}>
+              {r.f.type === "unknown" ? (
+                <>
+                  <p className="text-base font-bold mb-1">Not understood</p>
+                  <p className="text-sm mb-1" style={{ color: C.muted }}>Couldn't tell what this was. Add it by hand if you need it.</p>
+                </>
+              ) : (
+                <label className="flex items-start gap-3" style={{ cursor: "pointer" }}>
+                  <input type="checkbox" checked={r.on} onChange={(e) => set(r.key, { on: e.target.checked })}
+                    style={{ width: "1.4rem", height: "1.4rem", marginTop: 3, flex: "none" }} />
+                  <span className="text-base">
+                    {r.f.type === "lab" ? (
+                      <>
+                        <b>{m.label}</b>{" "}
+                        <span data-no-translate>{`${r.f.value} ${r.f.unit === "/10" ? "/ 10" : r.f.unit}`}</span>
+                        {r.f.unitGuessed && r.f.unit !== "/10" && (
+                          <span className="block text-sm" style={{ color: C.muted }}>No unit was heard, so your usual unit is shown. Check it.</span>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <b>{r.f.action === "start" ? "Started" : r.f.action === "stop" ? "Stopped" : "New dose"}</b>{" "}
+                        <span data-no-translate>{medName(r.f)}</span>
+                        {r.f.dose && <span className="block text-sm"><span>Dose</span>{": "}<span data-no-translate>{r.f.dose}</span></span>}
+                      </>
+                    )}
+                  </span>
+                </label>
+              )}
+              <p className="text-sm mt-1" style={{ color: C.muted }}>
+                <span>You said</span>{": "}<q data-no-translate>{r.f.said}</q>
+                {who && <span data-no-translate>{` · ${who}`}</span>}
+              </p>
+              {r.f.type !== "unknown" && (
+                <label className="block text-sm mt-2">
+                  <span style={{ marginInlineEnd: 8 }}>Date</span>
+                  <input type="date" value={r.date} max={today()} onChange={(e) => set(r.key, { date: e.target.value })}
+                    className="p-2 rounded-md" style={{ border: `1px solid ${C.line}`, background: C.surface, color: C.ink }} />
+                </label>
+              )}
+            </div>
+          );
+        })}
+        <p className="text-sm mb-3" style={{ color: C.muted }}>Anything not checked is deleted when you save.</p>
+        <div className="flex gap-2 flex-wrap">
+          <Button kind="secondary" onClick={onLater}>Later</Button>
+          <Button onClick={() => onSave(chosen.filter((r) => isDay(r.date)))}>{chosen.length ? "Save the checked ones" : "Delete these"}</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// On the Profile tab of the iPhone app, when an Apple Watch is paired.
+function AppleWatchCard() {
+  const [st, setSt] = useState(null);
+  useEffect(() => { watchStatus().then(setSt); }, []);
+  if (!IOS_APP || !st || !st.paired) return null;
+  return (
+    <section className="p-4 mb-5 rounded-lg" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
+      <h2 className="text-base font-bold mb-1">Apple Watch</h2>
+      <p className="text-sm mb-2" style={{ color: C.muted }}>
+        Use the Quick Log on your Apple Watch, and say lab results or medicine changes. Your watch shows the buttons for the
+        disease chosen here.
+      </p>
+      <p className="text-sm mb-2" style={{ color: C.muted }}>
+        Watch entries go straight from your watch to this iPhone, never to us. Taps are added the next time you open this
+        app. Spoken lab results and medicines are shown to you to check before they're saved.
+      </p>
+      {!st.installed && (
+        <p className="text-sm" style={{ color: C.muted }}>
+          To add it to your watch, open the Watch app on this iPhone, scroll to Available Apps and tap Install.
+        </p>
+      )}
+    </section>
   );
 }
 
@@ -7225,6 +7394,120 @@ function FabryTracker() {
   const condNameOf = (id) => { const c = condOf(records[id]); return c.short.charAt(0).toUpperCase() + c.short.slice(1); };
   const family = people.list.length > 1;
 
+  // ----- Apple Watch (iPhone app) -----
+  const recordsRef = useRef(records);
+  recordsRef.current = records;
+  const peopleRef = useRef(people);
+  peopleRef.current = people;
+  const [watchVoice, setWatchVoice] = useState([]); // spoken entries waiting to be checked
+  const [watchLater, setWatchLater] = useState(false);
+  const [watchLang, setWatchLang] = useState(currentLang());
+  useEffect(() => {
+    const on = () => setWatchLang(currentLang());
+    window.addEventListener("fabry-lang-change", on);
+    return () => window.removeEventListener("fabry-lang-change", on);
+  }, []);
+  // The watch shows the Quick Log for the person and disease open here, in this language.
+  useEffect(() => {
+    if (!IOS_APP || !loaded) return;
+    watchSetup(watchConfig(cond, activePerson, family));
+  }, [loaded, cond.id, activePerson.id, activePerson.name, family, watchLang]);
+  // Brings in what was logged on the watch: when the app opens, comes back to the front, and every 15 seconds.
+  useEffect(() => {
+    if (!IOS_APP || !loaded) return undefined;
+    let busy = false;
+    const pull = async () => {
+      if (busy || document.hidden) return;
+      busy = true;
+      try {
+        const items = await watchPending();
+        if (!items.length) return;
+        const recs = recordsRef.current;
+        const owner = (it) => (recs[it.person] ? it.person : peopleRef.current.active);
+        const taps = items.filter((it) => it.kind === "score" || it.kind === "event");
+        const voice = items.filter((it) => it.kind === "voice" && typeof it.text === "string" && it.text.trim());
+        const drop = items.filter((it) => !taps.includes(it) && !voice.includes(it)).map((it) => it.id);
+        const added = [];
+        taps.forEach((it) => { const r = recs[owner(it)]; if (r && addWatchTap(r, it) !== r) added.push(watchId(it)); });
+        if (added.length) {
+          setRecords((rs) => {
+            const out = { ...rs };
+            taps.forEach((it) => { const pid = owner(it); if (out[pid]) out[pid] = addWatchTap(out[pid], it); });
+            return out;
+          });
+          const ids = new Set(added);
+          setToast({
+            text: added.length === 1 ? "1 entry added from your Apple Watch" : `${added.length} entries added from your Apple Watch`,
+            undo: () => setRecords((rs) => Object.fromEntries(Object.entries(rs).map(([k, r]) => [k, { ...r,
+              entries: (r.entries || []).filter((e) => !ids.has(e.id)), events: (r.events || []).filter((e) => !ids.has(e.id)) }]))),
+          });
+        }
+        if (taps.length || drop.length) await watchClear([...taps.map((it) => it.id), ...drop]);
+        if (voice.length) {
+          setWatchVoice((cur) => {
+            const fresh = voice.filter((v) => !cur.some((c) => c.id === v.id)).map((v) => ({ ...v, person: owner(v) }));
+            if (fresh.length) setWatchLater(false);
+            return fresh.length ? [...cur, ...fresh] : cur;
+          });
+        }
+      } finally {
+        busy = false;
+      }
+    };
+    pull();
+    const timer = setInterval(pull, 15000);
+    const onShow = () => { if (!document.hidden) pull(); };
+    document.addEventListener("visibilitychange", onShow);
+    return () => { clearInterval(timer); document.removeEventListener("visibilitychange", onShow); };
+  }, [loaded]);
+  // Saves the spoken entries the patient checked. Lab results on the same day go into one visit.
+  const saveWatchVoice = (rows) => {
+    const byPerson = {};
+    rows.forEach((r) => { (byPerson[r.item.person] = byPerson[r.item.person] || []).push(r); });
+    const fold = (x) => String(x || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+    setRecords((rs) => {
+      const out = { ...rs };
+      Object.entries(byPerson).forEach(([pid, list]) => {
+        let d = out[pid];
+        if (!d) return;
+        const labs = {};
+        list.forEach((r) => {
+          const f = r.f;
+          if (f.type === "lab") {
+            const v = units.storeFrom(f.metric, f.value, f.unit);
+            if (isFinite(v)) (labs[r.date] = labs[r.date] || {})[f.metric] = v;
+            return;
+          }
+          if (f.type !== "med") return;
+          const custom = f.med.startsWith("rec:");
+          const recId = custom ? f.med.slice(4) : f.record;
+          if (f.action === "start") {
+            const base = custom ? d.meds.find((m) => m.id === recId) : null;
+            if (custom && !base) return;
+            const info = MEDS.find((m) => m.id === f.med);
+            const rec = { id: uid(), med: custom ? "custom" : f.med, start: r.date, stop: "", startDose: f.dose || "", doses: [] };
+            if (custom) rec.customName = base.customName;
+            else if (info && info.className && f.name && ![info.className, info.short].some((x) => fold(x) === fold(f.name))) {
+              rec.customName = f.name.charAt(0).toUpperCase() + f.name.slice(1);
+            }
+            d = { ...d, meds: [...d.meds, rec] };
+          } else if (f.action === "stop") {
+            d = { ...d, meds: d.meds.map((m) => (m.id === recId && !m.stop && r.date >= m.start ? { ...m, stop: r.date } : m)) };
+          } else if (f.action === "dose" && f.dose) {
+            d = { ...d, meds: d.meds.map((m) => (m.id === recId ? { ...m, doses: [...(m.doses || []), { id: uid(), date: r.date, dose: f.dose.slice(0, 60) }] } : m)) };
+          }
+        });
+        Object.entries(labs).forEach(([date, vals]) => { d = { ...d, entries: [...d.entries, { id: uid(), date, ...vals }] }; });
+        out[pid] = d;
+      });
+      return out;
+    });
+    const ids = watchVoice.map((v) => v.id);
+    setWatchVoice([]);
+    watchClear(ids);
+    if (rows.length) setToast({ text: rows.length === 1 ? "1 item saved from your Apple Watch" : `${rows.length} items saved from your Apple Watch` });
+  };
+
   // Opens another person's record. The current record is saved first.
   const openPerson = (id, fresh, list) => {
     const next = fresh || records[id] || { ...EMPTY, onboarded: true, recordId: uid() };
@@ -8796,6 +9079,7 @@ function FabryTracker() {
                 <AppleHealthCard onOpen={() => setAppleHealth(true)} lastHealth={data.lastHealth} />
               </section>
             )}
+            {IOS_APP && <AppleWatchCard />}
             {region !== "eu" && !NATIVE_APP && (
               <section className="p-4 mb-5 rounded-lg" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
                 <h2 className="text-base font-bold mb-1">Connect your health record</h2>
@@ -8978,6 +9262,10 @@ function FabryTracker() {
       {tourOn && <Tour onClose={() => { endTour(); setTab("trends"); }} onSample={loadSample} hasEntries={data.entries.length > 0}
         onTab={(t) => setTab((cur) => (cur === t ? cur : t))}
         quickLog={hasQuickLog(cond)} />}
+      {IOS_APP && watchVoice.length > 0 && !watchLater && (
+        <WatchReviewDialog key={watchVoice.map((v) => v.id).join("|")} items={watchVoice} records={records} people={people.list}
+          units={units} onSave={saveWatchVoice} onLater={() => setWatchLater(true)} />
+      )}
       {appleHealth && <AppleHealthDialog cond={cond} entries={data.entries} onAdd={importHealth} onClose={() => setAppleHealth(false)} />}
       <div className="sr-only" role="status" aria-live="polite">{spoken}</div>
       {toast && (
