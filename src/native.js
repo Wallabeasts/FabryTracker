@@ -208,3 +208,67 @@ export async function watchClear(ids) {
   if (!IOS_APP || !ids.length) return;
   try { await prefsLike("WatchSync", "clear", { ids: JSON.stringify(ids) }); } catch (e) { /* try again next time */ }
 }
+
+// ---------- Patient portal (Epic MyChart) inside the apps ----------
+// The website signs in by visiting the portal and coming back to its own address. An app can't do that, so:
+// - the portal's sign-in page opens in the phone's secure sign-in sheet (iPhone) or browser (Android), and sends the
+//   patient back to PORTAL_REDIRECT, which only this app can receive;
+// - requests to the health system (the sign-in token and the lab results) are made by the app itself, because health
+//   systems don't accept requests from inside an app's page.
+export const PORTAL_REDIRECT = "com.myrarediseasetracker.app://oauth/epic";
+const PORTAL_SCHEME = "com.myrarediseasetracker.app";
+let portalWaiting = null;
+const httpWaiting = new Map();
+let httpSeq = 0;
+if (ANDROID_APP && typeof window !== "undefined") {
+  window.__rdtPortalBack = (url) => { const p = portalWaiting; portalWaiting = null; if (p) p.resolve(url); };
+  window.__rdtNativeHttp = (id, status, text, err) => {
+    const p = httpWaiting.get(id);
+    if (!p) return;
+    httpWaiting.delete(id);
+    if (err) p.reject(new Error(err)); else p.resolve({ status, text });
+  };
+}
+const cancelled = () => Object.assign(new Error("cancelled"), { cancelled: true });
+
+// Opens the portal's sign-in page and resolves with the address it sends the patient back to.
+export function nativePortalSignIn(url) {
+  if (IOS_APP) {
+    return prefsLike("PortalSignIn", "start", { url, scheme: PORTAL_SCHEME })
+      .then((r) => (r && r.url) || Promise.reject(new Error("failed")))
+      .catch((e) => Promise.reject(e.message === "cancelled" ? cancelled() : e));
+  }
+  const b = ANDROID_APP && window.AndroidPortal;
+  if (!b) return Promise.reject(new Error("unavailable"));
+  if (portalWaiting) portalWaiting.reject(cancelled());
+  return new Promise((resolve, reject) => {
+    portalWaiting = { resolve, reject };
+    // If the patient comes back to the app without finishing (back button), stop waiting.
+    let left = false;
+    const onVis = () => {
+      if (document.hidden) { left = true; return; }
+      if (!left) return;
+      setTimeout(() => {
+        if (portalWaiting && portalWaiting.resolve === resolve) { portalWaiting = null; reject(cancelled()); }
+      }, 2500);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+    document.addEventListener("visibilitychange", onVis);
+    b.open(url);
+  });
+}
+
+// A request to the health system, made by the app. Resolves with { status, text }.
+export function nativeHttp(url, { method = "GET", headers = {}, body = "" } = {}) {
+  if (IOS_APP) {
+    return prefsLike("NativeHttp", "request", { url, method, headers, body })
+      .then((r) => ({ status: Number(r && r.status) || 0, text: (r && r.text) || "" }));
+  }
+  const b = ANDROID_APP && window.AndroidPortal;
+  if (!b) return Promise.reject(new Error("unavailable"));
+  const id = ++httpSeq;
+  return new Promise((resolve, reject) => {
+    httpWaiting.set(id, { resolve, reject });
+    try { b.request(id, url, method, JSON.stringify(headers), body); } catch (e) { httpWaiting.delete(id); reject(new Error("unavailable")); }
+  });
+}

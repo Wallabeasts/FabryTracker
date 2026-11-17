@@ -7,7 +7,7 @@ import {
   createAccount, logIn, logOut, changePassword, resetPassword, replaceRecoveryCode, eraseEverything, bioAvailable, bioEnabled, enableBio, disableBio, bioLogIn, bioKind, readAccount, isProtectedKey, cryptoAvailable, currentUser,
 } from "./vault.js";
 import { checkPassword } from "./passwords.js";
-import { NATIVE_APP, IOS_APP, saveFileInApp, healthAvailable, healthConnect, healthRead, watchStatus, watchSetup, watchPending, watchClear, nativeBioReason, nativeBioDevice } from "./native.js";
+import { NATIVE_APP, IOS_APP, saveFileInApp, healthAvailable, healthConnect, healthRead, watchStatus, watchSetup, watchPending, watchClear, nativeBioReason, nativeBioDevice, PORTAL_REDIRECT, nativePortalSignIn, nativeHttp } from "./native.js";
 import { makeVoiceParser } from "./voice.js";
 import { labInfo } from "./labInfo.js";
 import { ALERT_EVERY_DAYS, alertDue, cleanWatch, countryName, countryOptions, fetchEnrolling, matchTrials } from "./trialAlerts.js";
@@ -2939,10 +2939,23 @@ function mapObservations(observations) {
 const b64url = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 const randomString = (n) => { const a = new Uint8Array(n); crypto.getRandomValues(a); return b64url(a).slice(0, n); };
 const withSlash = (u) => (u.endsWith("/") ? u : `${u}/`);
-// The app's own address, exactly as registered with Epic as the redirect URI.
-const appAddress = () => `${window.location.origin}${window.location.pathname.replace(/index\.html$/, "")}`;
+// The app's own address, exactly as registered with Epic as the redirect URI. Inside the phone apps, the portal sends
+// the patient back to the app instead (PORTAL_REDIRECT, also registered with Epic).
+const appAddress = () => (NATIVE_APP ? PORTAL_REDIRECT
+  : `${window.location.origin}${window.location.pathname.replace(/index\.html$/, "")}`);
 
 async function fetchJSON(url, options = {}, what = "your health system") {
+  if (NATIVE_APP) {
+    // Inside the apps the request is made by the phone (see nativeHttp in native.js).
+    let r;
+    try {
+      r = await nativeHttp(url, { method: options.method || "GET", headers: options.headers || {}, body: options.body || "" });
+    } catch (e) {
+      throw new Error(e.message === "timeout" ? `${what} took too long to answer` : `${what} couldn't be reached`);
+    }
+    if (r.status < 200 || r.status >= 300) throw new Error(`${what} answered with an error (${r.status})`);
+    try { return JSON.parse(r.text); } catch (e) { throw new Error(`${what} answered with an error (${r.status})`); }
+  }
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 20000);
   let res;
@@ -2958,7 +2971,9 @@ async function fetchJSON(url, options = {}, what = "your health system") {
 }
 
 // Step 1 of sign-in: send the patient to their health system's MyChart login page.
-async function startSignIn(system) {
+// Inside the phone apps the page stays put: the sign-in opens over it, and when the patient comes back this goes
+// straight on to step 2 (onBack is called first) and returns what was found.
+async function startSignIn(system, onBack) {
   const cfg = await fetchJSON(`${withSlash(system.fhirBase)}.well-known/smart-configuration`, {}, system.name);
   if (!isWebLink(cfg.authorization_endpoint) || !isWebLink(cfg.token_endpoint)) {
     throw new Error(`${system.name}'s sign-in details couldn't be read`);
@@ -2973,7 +2988,16 @@ async function startSignIn(system) {
     response_type: "code", client_id: epicClientId(), redirect_uri: appAddress(), scope: EPIC.scope, state,
     aud: system.fhirBase, code_challenge: challenge, code_challenge_method: "S256",
   });
-  window.location.assign(`${cfg.authorization_endpoint}?${q.toString()}`);
+  const signInUrl = `${cfg.authorization_endpoint}?${q.toString()}`;
+  if (NATIVE_APP) {
+    const back = await nativePortalSignIn(signInUrl);
+    if (onBack) onBack();
+    let search = "";
+    try { search = new URL(back).search; } catch (e) { search = ""; }
+    return finishSignIn(search);
+  }
+  window.location.assign(signInUrl);
+  return null;
 }
 
 const isReturnFromSignIn = () => {
@@ -2984,9 +3008,9 @@ const isReturnFromSignIn = () => {
 
 // Step 2 of sign-in: back from MyChart. Swap the one-time code for an access token, download the
 // patient's details and lab results, and hand back what was found. Nothing is saved here.
-async function finishSignIn() {
-  const q = new URLSearchParams(window.location.search);
-  window.history.replaceState({}, "", window.location.pathname); // remove the one-time code from the address bar
+async function finishSignIn(fromApp) {
+  const q = new URLSearchParams(fromApp === undefined ? window.location.search : fromApp);
+  if (fromApp === undefined) window.history.replaceState({}, "", window.location.pathname); // remove the one-time code from the address bar
   let saved = null;
   try { saved = JSON.parse(sessionStorage.getItem(CONNECT_KEY)); } catch (e) { saved = null; }
   sessionStorage.removeItem(CONNECT_KEY);
@@ -3091,8 +3115,11 @@ function ConnectWizard({ connect, setConnect, region, units, profile, personName
   const signIn = async () => {
     go("signing");
     try {
-      await startSignIn(system);
+      const result = await startSignIn(system, () => setConnect({ stage: "working" }));
+      if (result) setConnect({ stage: "review", result });
     } catch (e) {
+      // Closing the sign-in page in the app just goes back a step.
+      if (e.cancelled) { setConnect({ stage: "prepare" }); return; }
       setConnect({ stage: "error", error: `${e.message}. Check your internet connection and try again.` });
     }
   };
@@ -4128,12 +4155,7 @@ function SettingsDialog({ theme, onTheme, region, onRegion, onTour, onTerms, onC
         </fieldset>
         <section className="mb-5">
           <h3 className="text-base font-bold mb-1">Health record</h3>
-          {NATIVE_APP ? (
-            <>
-              <p className="text-sm" style={{ color: C.muted }}>Connecting a patient portal works on the website version of the app for now. You can keep adding your results on the Add tab.</p>
-              <AppleHealthCard onOpen={onAppleHealth} lastHealth={lastHealth} />
-            </>
-          ) : region === "eu" ? (
+          {region === "eu" ? (
             <p className="text-sm" style={{ color: C.muted }}>Connecting a patient portal is available in the United States only.</p>
           ) : (
             <>
@@ -4144,6 +4166,7 @@ function SettingsDialog({ theme, onTheme, region, onRegion, onTour, onTerms, onC
               <Button onClick={onConnect}>Connect your health record</Button>
             </>
           )}
+          {IOS_APP && <AppleHealthCard onOpen={onAppleHealth} lastHealth={lastHealth} />}
         </section>
         {!NATIVE_APP && <InstallSection />}
         <section className="mb-5">
@@ -9165,14 +9188,8 @@ function FabryTracker() {
               <ShareCard key={people.active} data={data} person={activePerson} />
             </div>
 
-            {IOS_APP && (
-              <section className="p-4 mb-5 rounded-lg" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
-                <h2 className="text-base font-bold mb-1">Apple Health</h2>
-                <AppleHealthCard onOpen={() => setAppleHealth(true)} lastHealth={data.lastHealth} />
-              </section>
-            )}
             {IOS_APP && <AppleWatchCard />}
-            {region !== "eu" && !NATIVE_APP && (
+            {region !== "eu" && (
               <section className="p-4 mb-5 rounded-lg" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
                 <h2 className="text-base font-bold mb-1">Connect your health record</h2>
                 <p className="text-sm mb-3" style={{ color: C.muted }}>
@@ -9180,6 +9197,12 @@ function FabryTracker() {
                   {data.lastImport ? ` Last added ${fmtDate(toT(data.lastImport.date))} from ${data.lastImport.source}.` : ""}
                 </p>
                 <Button onClick={() => setConnect({ stage: "intro" })}>Connect your health record</Button>
+              </section>
+            )}
+            {IOS_APP && (
+              <section className="p-4 mb-5 rounded-lg" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
+                <h2 className="text-base font-bold mb-1">Apple Health</h2>
+                <AppleHealthCard onOpen={() => setAppleHealth(true)} lastHealth={data.lastHealth} />
               </section>
             )}
 

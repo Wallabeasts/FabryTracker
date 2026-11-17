@@ -4,6 +4,7 @@ import LocalAuthentication
 import HealthKit
 import Security
 import WatchConnectivity
+import AuthenticationServices
 
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
@@ -31,6 +32,8 @@ class AppBridgeViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(BiometricVaultPlugin())
         bridge?.registerPluginInstance(HealthDataPlugin())
         bridge?.registerPluginInstance(WatchSyncPlugin())
+        bridge?.registerPluginInstance(PortalSignInPlugin())
+        bridge?.registerPluginInstance(NativeHttpPlugin())
         WatchLink.shared.start()
     }
 }
@@ -349,5 +352,84 @@ public class WatchSyncPlugin: CAPPlugin, CAPBridgedPlugin {
               let ids = try? JSONSerialization.jsonObject(with: data) as? [String] else { call.resolve(); return }
         WatchLink.shared.clear(Set(ids))
         call.resolve()
+    }
+}
+
+
+// Patient portal (Epic MyChart) sign-in, used by src/App.jsx through src/native.js.
+// Opens the health system's own sign-in page in Apple's secure sign-in sheet. When the patient finishes, the health
+// system sends them back to com.myrarediseasetracker.app://oauth/epic with a one-time code, which goes to the page.
+// The sheet keeps no cookies afterwards (ephemeral), so the portal sign-in isn't left behind on the phone.
+@objc(PortalSignInPlugin)
+public class PortalSignInPlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthenticationPresentationContextProviding {
+    public let identifier = "PortalSignInPlugin"
+    public let jsName = "PortalSignIn"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "start", returnType: CAPPluginReturnPromise),
+    ]
+    private var session: ASWebAuthenticationSession?
+
+    @objc func start(_ call: CAPPluginCall) {
+        guard let s = call.getString("url"), let url = URL(string: s), url.scheme == "https",
+              let scheme = call.getString("scheme"), !scheme.isEmpty else { call.reject("Bad sign-in address", "failed"); return }
+        DispatchQueue.main.async {
+            let session = ASWebAuthenticationSession(url: url, callbackURLScheme: scheme) { [weak self] back, error in
+                self?.session = nil
+                if let back = back {
+                    call.resolve(["url": back.absoluteString])
+                } else if let e = error as? ASWebAuthenticationSessionError, e.code == .canceledLogin {
+                    call.reject("Cancelled", "cancelled")
+                } else {
+                    call.reject("Sign-in didn't finish", "failed")
+                }
+            }
+            session.presentationContextProvider = self
+            session.prefersEphemeralWebBrowserSession = true
+            self.session = session
+            if !session.start() { self.session = nil; call.reject("Sign-in couldn't open", "failed") }
+        }
+    }
+
+    public func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        return bridge?.webView?.window ?? ASPresentationAnchor()
+    }
+}
+
+// Web requests to the patient's health system (sign-in token and lab results), made by the phone rather than the
+// page, because health systems don't accept requests from inside an app's page. Only https addresses; nothing is
+// stored here, and the answer goes straight back to the page.
+@objc(NativeHttpPlugin)
+public class NativeHttpPlugin: CAPPlugin, CAPBridgedPlugin {
+    public let identifier = "NativeHttpPlugin"
+    public let jsName = "NativeHttp"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "request", returnType: CAPPluginReturnPromise),
+    ]
+    private lazy var urlSession: URLSession = {
+        let c = URLSessionConfiguration.ephemeral
+        c.timeoutIntervalForRequest = 20
+        c.httpCookieStorage = nil
+        c.urlCache = nil
+        return URLSession(configuration: c)
+    }()
+
+    @objc func request(_ call: CAPPluginCall) {
+        guard let s = call.getString("url"), let url = URL(string: s), url.scheme == "https" else {
+            call.reject("Only secure (https) addresses", "failed"); return
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = (call.getString("method") ?? "GET").uppercased() == "POST" ? "POST" : "GET"
+        if let headers = call.getObject("headers") {
+            for (k, v) in headers { if let v = v as? String { req.setValue(v, forHTTPHeaderField: k) } }
+        }
+        if req.httpMethod == "POST", let body = call.getString("body") { req.httpBody = body.data(using: .utf8) }
+        urlSession.dataTask(with: req) { data, response, error in
+            if let error = error as NSError? {
+                call.reject(error.code == NSURLErrorTimedOut ? "timeout" : "unreachable", "failed"); return
+            }
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            let text = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+            call.resolve(["status": status, "text": text])
+        }.resume()
     }
 }
