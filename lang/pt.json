@@ -3059,5 +3059,10 @@
   "{0} registros adicionados do seu Apple Watch",
   "{0} registro adicionado do seu Apple Watch",
   "{0} itens salvos do seu Apple Watch",
-  "{0} item salvo do seu Apple Watch"
+  "{0} item salvo do seu Apple Watch",
+  "Não foi possível abrir seu registro salvo",
+  "Nada foi apagado. O que estava salvo continua neste celular, e o app guardou uma cópia.",
+  "Feche o app e abra de novo, ou toque em Tentar novamente.",
+  "Se continuar vendo isto, você pode começar com um registro vazio e recuperar suas informações de um arquivo de backup (Configurações e depois Restaurar a partir de um backup).",
+  "Começar com um registro vazio"
 ]

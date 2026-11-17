@@ -3059,5 +3059,10 @@
   "{0} entries added from your Apple Watch",
   "{0} entry added from your Apple Watch",
   "{0} items saved from your Apple Watch",
-  "{0} item saved from your Apple Watch"
+  "{0} item saved from your Apple Watch",
+  "Your saved record couldn't be opened",
+  "Nothing has been deleted. What was saved is still on this phone, and the app has kept a copy of it.",
+  "Close the app and open it again, or tap Try again.",
+  "If you keep seeing this, you can start with an empty record and bring your information back from a backup file (Settings, then Restore from a backup).",
+  "Start with an empty record"
 ]

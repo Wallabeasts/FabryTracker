@@ -3059,5 +3059,10 @@
   "{0} saisies ajoutées depuis votre Apple Watch",
   "{0} saisie ajoutée depuis votre Apple Watch",
   "{0} éléments enregistrés depuis votre Apple Watch",
-  "{0} élément enregistré depuis votre Apple Watch"
+  "{0} élément enregistré depuis votre Apple Watch",
+  "Votre dossier enregistré n'a pas pu être ouvert",
+  "Rien n'a été supprimé. Ce qui était enregistré est toujours sur ce téléphone, et l'app en a gardé une copie.",
+  "Fermez l'app et rouvrez-la, ou touchez Réessayer.",
+  "Si ce message revient, vous pouvez commencer avec un dossier vide et récupérer vos informations à partir d'un fichier de sauvegarde (Réglages, puis Restaurer à partir d’une sauvegarde).",
+  "Commencer avec un dossier vide"
 ]

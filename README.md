@@ -66,6 +66,25 @@ GitHub or to anyone else. The Learn tab sends only the chosen topic when it sear
 - **Watch app source:** `ios-app/ios/App/watch-app-source/` (three SwiftUI files). The watch target is added once in Xcode;
   see the README in that folder.
 
+## Keeping patients' data through app updates (3.29)
+
+An update replaces the app's code, never the saved record. The record lives in the phone's storage for this app
+(keys starting `fabry-tracker-`), which updates don't touch. Tested: records made by 3.24, 3.27 and 3.28 open unchanged
+in 3.29. Rules that keep it that way:
+
+- **Never change** the iPhone bundle ID or Android application ID (`com.myrarediseasetracker.app`), the storage key
+  names, or the website's address. Each of these is where the data is found.
+- **Android signing:** an update only installs over a copy signed with the same key. Test .apk files (test key) and
+  Google Play installs (Play key) can't update each other: a tester moving to the Play version must export a backup
+  first, uninstall, install, then restore.
+- **Only add fields** to the record; never rename or remove one without code that converts old records on load
+  (`readPersonRecord` fills in anything missing).
+- **Safety net:** if something is saved but can't be opened, the app keeps a copy (`fabry-tracker-rescue-<date>-<key>`),
+  shows "Your saved record couldn't be opened", and doesn't save over the original unless the patient chooses to start
+  again. On iPhone the app also waits for its permanent copy (Capacitor Preferences) to be put back before it starts.
+- Deleting the app deletes its data (on Android, backups are off by design). The in-app backup file is the way to move
+  to a new phone.
+
 ## Accessibility and Face ID in the apps (3.28)
 
 - **Face ID / fingerprint in the phone apps.** The iPhone app keeps a random secret in the Keychain, in an item that

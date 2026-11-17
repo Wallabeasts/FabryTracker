@@ -47,7 +47,6 @@ async function reconcile() {
   try { ls = window.localStorage; } catch (e) { return; }
   if (!ls) return;
   const { keys = [] } = await prefs("keys");
-  const kept = new Set(keys);
   let restored = 0;
   for (const key of keys) {
     if (ls.getItem(key) !== null) continue;
@@ -57,9 +56,13 @@ async function reconcile() {
       restored++;
     }
   }
-  for (const key of Object.keys(ls)) {
-    if (!kept.has(key)) await prefs("set", { key, value: ls.getItem(key) });
-  }
+  // Then refresh the permanent copy from the page (in the background), so the two never drift apart.
+  (async () => {
+    for (const key of Object.keys(ls)) {
+      const value = ls.getItem(key);
+      if (value !== null) await prefs("set", { key, value }).catch(() => {});
+    }
+  })();
   const flag = "__rdt_restored__";
   if (restored > 0 && !sessionStorage.getItem(flag)) {
     sessionStorage.setItem(flag, "1");
@@ -67,10 +70,11 @@ async function reconcile() {
   }
 }
 
-if (IOS_APP && cap()) {
-  mirrorLocalStorage();
-  reconcile().catch(() => {});
-}
+// Resolves once the iPhone app has put back anything iOS cleared from the page's storage. The app waits for this
+// before it reads or saves anything, so it can never start from (or save over) a missing record.
+export const nativeReady = IOS_APP && cap()
+  ? (mirrorLocalStorage(), Promise.race([reconcile().catch(() => {}), new Promise((r) => setTimeout(r, 5000))]))
+  : Promise.resolve();
 
 // Saves an export (backup or spreadsheet) from inside a phone app. Returns true if it was handled here.
 export async function saveFileInApp(text, filename, mime) {

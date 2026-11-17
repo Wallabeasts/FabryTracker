@@ -241,16 +241,17 @@ final class WatchLink: NSObject, WCSessionDelegate {
     var status: [String: Any] {
         guard WCSession.isSupported() else { return ["paired": false, "installed": false] }
         let s = WCSession.default
+        guard s.activationState == .activated else { return ["paired": false, "installed": false, "starting": true] }
         return ["paired": s.isPaired, "installed": s.isWatchAppInstalled]
     }
 
     // The newest Quick Log setup. Kept so it can be sent again once the watch app is installed.
     func setConfig(_ json: String) {
-        lastConfig = json
+        queue.sync { lastConfig = json }
         sendConfig()
     }
     private func sendConfig() {
-        guard let json = lastConfig, WCSession.isSupported() else { return }
+        guard WCSession.isSupported(), let json = queue.sync(execute: { lastConfig }) else { return }
         let s = WCSession.default
         guard s.activationState == .activated, s.isPaired, s.isWatchAppInstalled else { return }
         try? s.updateApplicationContext(["config": json])
@@ -275,6 +276,11 @@ final class WatchLink: NSObject, WCSessionDelegate {
         guard let data = try? JSONSerialization.data(withJSONObject: list) else { return }
         // Readable after the phone's first unlock since restart, so entries can arrive while the phone is locked.
         try? data.write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        // Not copied into iCloud or computer backups: it only holds entries on their way into the record.
+        var url = fileURL
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try? url.setResourceValues(values)
     }
     private func add(_ item: [String: Any]) {
         // Only the fields the app uses, with sensible limits.

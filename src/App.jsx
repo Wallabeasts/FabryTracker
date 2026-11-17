@@ -2661,7 +2661,7 @@ const WATCH_UI = {
 function watchConfig(cond, person, family) {
   return {
     v: 1, person: person.id, who: family ? String(person.name || "") : "", disease: tr(cond.name),
-    scores: quickScores(cond).map((r) => ({ id: r.id, label: tr(r.name || (metricById(r.id) || {}).short || r.id),
+    scores: quickScores(cond).map((r) => ({ id: r.id, label: tr(r.name || (metricById(r.id) || {}).short || r.id).replace(/^\p{Ll}/u, (c) => c.toUpperCase()),
       prompt: tr(r.prompt || ""), min: r.min === 0 ? 0 : 1 })),
     groups: condEventGroups(cond).map((g) => ({ title: tr(g.title), types: g.list.map((t) => ({ id: t.id, label: tr(t.label) })) })),
     ui: Object.fromEntries(Object.entries(WATCH_UI).map(([k, v]) => [k, tr(v)])),
@@ -2711,7 +2711,8 @@ function WatchReviewDialog({ items, records, people, units, onSave, onLater }) {
   const [rows, setRows] = useState(() => items.flatMap((it) => {
     const rec = records[it.person] || records[Object.keys(records)[0]];
     const meds = (rec.meds || []).map((m) => (m.med === "custom" ? { ...m, med: `rec:${m.id}` } : m));
-    const found = parserFor(condOf(rec), rec.meds || [])(it.text, meds);
+    let found;
+    try { found = parserFor(condOf(rec), rec.meds || [])(it.text, meds); } catch (e) { found = [{ type: "unknown", said: String(it.text) }]; }
     return found.map((f, i) => ({ key: `${it.id}-${i}`, item: it, f, on: f.type !== "unknown", date: isDay(it.date) ? it.date : today() }));
   }));
   const set = (key, ch) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...ch } : r)));
@@ -2791,7 +2792,16 @@ function WatchReviewDialog({ items, records, people, units, onSave, onLater }) {
 // On the Profile tab of the iPhone app, when an Apple Watch is paired.
 function AppleWatchCard() {
   const [st, setSt] = useState(null);
-  useEffect(() => { watchStatus().then(setSt); }, []);
+  useEffect(() => {
+    let tries = 0, timer;
+    // Just after the app opens, the link to the watch may still be starting: ask again a few times.
+    const ask = () => watchStatus().then((r) => {
+      setSt(r);
+      if (r && r.starting && tries++ < 5) timer = setTimeout(ask, 1500);
+    });
+    ask();
+    return () => clearTimeout(timer);
+  }, []);
   if (!IOS_APP || !st || !st.paired) return null;
   return (
     <section className="p-4 mb-5 rounded-lg" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
@@ -4267,13 +4277,37 @@ function cleanPeople(p) {
   return { active: list.some((x) => x.id === p.active) ? p.active : SELF, list };
 }
 
+// Safety net for app updates and damaged storage: if something is saved under a key but can't be opened (it won't
+// unlock, or isn't a record), the app keeps an untouched copy and never writes over the original on its own.
+const RESCUE_PREFIX = "fabry-tracker-rescue-";
+const UNREADABLE = new Set(); // storage keys that hold something the app couldn't open this time
+function savedRaw(key) {
+  try { return window.localStorage.getItem(key); } catch (e) { return null; }
+}
+function markUnreadable(key) {
+  UNREADABLE.add(key);
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (raw !== null) window.localStorage.setItem(`${RESCUE_PREFIX}${today()}-${key}`, raw);
+  } catch (e) { /* storage full or blocked: the original is still left alone */ }
+}
+
 async function readPersonRecord(id) {
   let rec = EMPTY;
+  const key = personKey(id);
   try {
-    const r = await window.storage.get(personKey(id), false);
-    if (r && r.value) rec = { ...EMPTY, ...JSON.parse(r.value) };
+    const r = await window.storage.get(key, false);
+    if (r && r.value) {
+      const p = JSON.parse(r.value);
+      if (!p || typeof p !== "object" || Array.isArray(p)) throw new Error("bad");
+      rec = { ...EMPTY, ...p,
+        profile: { ...EMPTY.profile, ...(p.profile && typeof p.profile === "object" ? p.profile : {}) },
+        entries: Array.isArray(p.entries) ? p.entries : [], meds: Array.isArray(p.meds) ? p.meds : [],
+        events: Array.isArray(p.events) ? p.events : [], family: Array.isArray(p.family) ? p.family : [] };
+    }
   } catch (e) {
-    // nothing saved yet for this person
+    // Nothing saved yet for this person is normal. Something saved that can't be opened is not.
+    if (savedRaw(key) !== null) markUnreadable(key);
   }
   return rec.recordId ? rec : { ...rec, recordId: uid() };
 }
@@ -7373,10 +7407,12 @@ function FabryTracker() {
         const r = await window.storage.get(PEOPLE_KEY, false);
         if (r && r.value) ppl = cleanPeople(JSON.parse(r.value));
       } catch (e) {
-        // only one person so far
+        // Only one person so far is normal. A saved list that can't be opened is kept, not replaced.
+        if (savedRaw(PEOPLE_KEY) !== null) markUnreadable(PEOPLE_KEY);
       }
       const all = {};
       for (const p of ppl.list) all[p.id] = await readPersonRecord(p.id);
+      setUnreadable(UNREADABLE.size > 0);
       ppl = { ...ppl, list: ppl.list.map((p) => ({ ...p, recordId: all[p.id].recordId })) };
       saved.current = { ...all };
       setPeople(ppl);
@@ -7385,10 +7421,16 @@ function FabryTracker() {
     })();
   }, []);
 
+  // True when something saved on this phone couldn't be opened. Until the patient chooses to start again, the app
+  // doesn't save over it (see markUnreadable).
+  const [unreadable, setUnreadable] = useState(false);
+  const [startOver, setStartOver] = useState(false);
+  const mayWrite = (key) => startOver || !UNREADABLE.has(key);
+
   useEffect(() => {
-    if (!loaded) return;
+    if (!loaded || !mayWrite(PEOPLE_KEY)) return;
     window.storage.set(PEOPLE_KEY, JSON.stringify(people), false).catch(() => {});
-  }, [people, loaded]);
+  }, [people, loaded, startOver]);
 
   const activePerson = people.list.find((p) => p.id === people.active) || people.list[0];
   const condNameOf = (id) => { const c = condOf(records[id]); return c.short.charAt(0).toUpperCase() + c.short.slice(1); };
@@ -7399,6 +7441,7 @@ function FabryTracker() {
   recordsRef.current = records;
   const peopleRef = useRef(people);
   peopleRef.current = people;
+  const watchDone = useRef([]); // watch entries now in a record, to forget once that record is saved
   const [watchVoice, setWatchVoice] = useState([]); // spoken entries waiting to be checked
   const [watchLater, setWatchLater] = useState(false);
   const [watchLang, setWatchLang] = useState(currentLang());
@@ -7428,7 +7471,11 @@ function FabryTracker() {
         const voice = items.filter((it) => it.kind === "voice" && typeof it.text === "string" && it.text.trim());
         const drop = items.filter((it) => !taps.includes(it) && !voice.includes(it)).map((it) => it.id);
         const added = [];
-        taps.forEach((it) => { const r = recs[owner(it)]; if (r && addWatchTap(r, it) !== r) added.push(watchId(it)); });
+        const addedItems = [];
+        taps.forEach((it) => {
+          const r = recs[owner(it)];
+          if (r && addWatchTap(r, it) !== r) { added.push(watchId(it)); addedItems.push(it.id); }
+        });
         if (added.length) {
           setRecords((rs) => {
             const out = { ...rs };
@@ -7442,10 +7489,15 @@ function FabryTracker() {
               entries: (r.entries || []).filter((e) => !ids.has(e.id)), events: (r.events || []).filter((e) => !ids.has(e.id)) }]))),
           });
         }
-        if (taps.length || drop.length) await watchClear([...taps.map((it) => it.id), ...drop]);
+        // Entries just added wait until the record is saved; the rest (already added, or not usable) go now.
+        const waitingSave = new Set([...addedItems, ...watchDone.current]);
+        watchDone.current = [...waitingSave];
+        const now = [...taps.map((it) => it.id), ...drop].filter((id) => !waitingSave.has(id));
+        if (now.length) await watchClear(now);
         if (voice.length) {
           setWatchVoice((cur) => {
-            const fresh = voice.filter((v) => !cur.some((c) => c.id === v.id)).map((v) => ({ ...v, person: owner(v) }));
+            const fresh = voice.filter((v) => !cur.some((c) => c.id === v.id) && !watchDone.current.includes(v.id))
+              .map((v) => ({ ...v, person: owner(v) }));
             if (fresh.length) setWatchLater(false);
             return fresh.length ? [...cur, ...fresh] : cur;
           });
@@ -7504,7 +7556,8 @@ function FabryTracker() {
     });
     const ids = watchVoice.map((v) => v.id);
     setWatchVoice([]);
-    watchClear(ids);
+    if (rows.length) watchDone.current = [...watchDone.current, ...ids];
+    else watchClear(ids);
     if (rows.length) setToast({ text: rows.length === 1 ? "1 item saved from your Apple Watch" : `${rows.length} items saved from your Apple Watch` });
   };
 
@@ -7585,9 +7638,12 @@ function FabryTracker() {
 
   useEffect(() => {
     if (!loaded) return;
-    const changed = Object.keys(records).filter((id) => records[id] !== saved.current[id]);
+    const changed = Object.keys(records).filter((id) => records[id] !== saved.current[id] && mayWrite(personKey(id)));
+    // Watch entries are forgotten on the phone only once the record holding them is safely saved.
+    const watchSaved = () => { const ids = watchDone.current; watchDone.current = []; if (ids.length) watchClear(ids); };
     if (!changed.length) {
       setStatus((st) => st || "Saved on this device");
+      watchSaved();
       return;
     }
     (async () => {
@@ -7602,8 +7658,9 @@ function FabryTracker() {
         }
       }
       setStatus(ok ? "Saved on this device" : "Couldn't save. Export a backup to keep your data safe.");
+      if (ok) watchSaved();
     })();
-  }, [records, loaded]);
+  }, [records, loaded, startOver]);
 
   const domain = useMemo(() => {
     const ts = [
@@ -7979,6 +8036,26 @@ function FabryTracker() {
 
   if (!loaded) {
     return <div className="p-6 text-base" style={{ color: C.muted, background: C.bg, minHeight: "100vh" }}>Loading your record…</div>;
+  }
+
+  if (unreadable && !startOver) {
+    return (
+      <div className="p-6" style={{ color: C.ink, background: C.bg, minHeight: "100vh" }}>
+        <div className="max-w-xl mx-auto p-5 rounded-lg" role="alert" style={{ background: C.surface, border: `2px solid ${C.error}` }}>
+          <h1 className="text-2xl font-bold mb-2">Your saved record couldn't be opened</h1>
+          <p className="text-base mb-3">Nothing has been deleted. What was saved is still on this phone, and the app has kept a copy of it.</p>
+          <p className="text-base mb-3">Close the app and open it again, or tap Try again.</p>
+          <p className="text-base mb-4">
+            If you keep seeing this, you can start with an empty record and bring your information back from a backup file
+            (Settings, then Restore from a backup).
+          </p>
+          <div className="flex gap-2 flex-wrap">
+            <Button onClick={() => window.location.reload()}>Try again</Button>
+            <Button kind="secondary" onClick={() => setStartOver(true)}>Start with an empty record</Button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (terms === null) {

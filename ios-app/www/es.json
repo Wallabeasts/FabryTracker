@@ -3059,5 +3059,10 @@
   "{0} entradas agregadas desde su Apple Watch",
   "{0} entrada agregada desde su Apple Watch",
   "{0} elementos guardados desde su Apple Watch",
-  "{0} elemento guardado desde su Apple Watch"
+  "{0} elemento guardado desde su Apple Watch",
+  "No se pudo abrir su registro guardado",
+  "No se ha borrado nada. Lo que estaba guardado sigue en este teléfono, y la app ha conservado una copia.",
+  "Cierre la app y ábrala de nuevo, o toque Intentar de nuevo.",
+  "Si sigue viendo esto, puede empezar con un registro vacío y recuperar su información desde un archivo de copia de seguridad (Configuración y luego Restaurar desde una copia de seguridad).",
+  "Empezar con un registro vacío"
 ]

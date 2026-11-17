@@ -10,8 +10,10 @@
 // Folds one character for matching: lower case, no accents. Always one character, so positions stay the same as the
 // original text (which is used to keep a dose exactly as it was said).
 const fold1 = (c) => {
-  const f = c.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
-  return f.length === 1 ? f : c.toLowerCase().charAt(0) || c;
+  const f = c.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (f.length === c.length) return f;
+  const l = c.toLowerCase();
+  return l.length === c.length ? l : c;
 };
 const fold = (s) => Array.from(String(s), fold1).join("");
 const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -83,11 +85,14 @@ export function makeVoiceParser({ metrics, meds, unitOptions, regionUnit, tr = (
     const found = [];
     const taken = new Array(text.length).fill(false);
     names.forEach((n) => {
-      const re = CJK.test(n.key) ? new RegExp(escRe(n.key), "g")
-        : new RegExp(`(?<![\\p{L}\\p{N}])${escRe(n.key).replace(/ /g, "\\s+")}(?![\\p{L}\\p{N}])`, "gu");
+      // No lookbehind here: iPhones before iOS 16.4 can't read one.
+      const cjk = CJK.test(n.key);
+      const re = cjk ? new RegExp(`()(${escRe(n.key)})`, "g")
+        : new RegExp(`(^|[^\\p{L}\\p{N}])(${escRe(n.key).replace(/ /g, "\\s+")})(?![\\p{L}\\p{N}])`, "gu");
       let mm;
       while ((mm = re.exec(text))) {
-        const s = mm.index, e = s + mm[0].length;
+        const s = mm.index + mm[1].length, e = s + mm[2].length;
+        re.lastIndex = e;
         if (taken.slice(s, e).some(Boolean)) continue;
         for (let i = s; i < e; i++) taken[i] = true;
         found.push({ ...n, s, e });
@@ -126,7 +131,7 @@ export function makeVoiceParser({ metrics, meds, unitOptions, regionUnit, tr = (
       const active = current && !current.stop;
       let dose = original.slice(f.e, clauseEnd);
       Object.values(ACTIONS).flat().forEach((w) => {
-        if (!CJK.test(w)) dose = dose.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escRe(w)}(?![\\p{L}\\p{N}])`, "giu"), " ");
+        if (!CJK.test(w)) dose = dose.replace(new RegExp(`(^|[^\\p{L}\\p{N}])${escRe(w)}(?![\\p{L}\\p{N}])`, "giu"), "$1 ");
       });
       dose = dose.replace(/\s+/g, " ").replace(/^[\s,.;:-]+|[\s,.;:]+$/g, "");
       while (FILLER.test(dose)) dose = dose.replace(FILLER, "");

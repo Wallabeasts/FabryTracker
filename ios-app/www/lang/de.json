@@ -3059,5 +3059,10 @@
   "{0} Einträge von Ihrer Apple Watch hinzugefügt",
   "{0} Eintrag von Ihrer Apple Watch hinzugefügt",
   "{0} Einträge von Ihrer Apple Watch gespeichert",
-  "{0} Eintrag von Ihrer Apple Watch gespeichert"
+  "{0} Eintrag von Ihrer Apple Watch gespeichert",
+  "Ihre gespeicherte Akte konnte nicht geöffnet werden",
+  "Es wurde nichts gelöscht. Das Gespeicherte ist weiterhin auf diesem Handy, und die App hat eine Kopie davon aufbewahrt.",
+  "Schließen Sie die App und öffnen Sie sie erneut, oder tippen Sie auf Erneut versuchen.",
+  "Wenn Sie dies weiterhin sehen, können Sie mit einer leeren Akte beginnen und Ihre Daten aus einer Sicherungsdatei zurückholen (Einstellungen, dann Aus einer Sicherung wiederherstellen).",
+  "Mit einer leeren Akte beginnen"
 ]

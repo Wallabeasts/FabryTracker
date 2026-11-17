@@ -3059,5 +3059,10 @@
   "{0} voci aggiunte dal tuo Apple Watch",
   "{0} voce aggiunta dal tuo Apple Watch",
   "{0} elementi salvati dal tuo Apple Watch",
-  "{0} elemento salvato dal tuo Apple Watch"
+  "{0} elemento salvato dal tuo Apple Watch",
+  "Non è stato possibile aprire il tuo registro salvato",
+  "Non è stato eliminato nulla. Ciò che era salvato è ancora su questo telefono e l'app ne ha conservato una copia.",
+  "Chiudi l'app e riaprila, oppure tocca Riprova.",
+  "Se continui a vedere questo messaggio, puoi iniziare con un registro vuoto e recuperare le tue informazioni da un file di backup (Impostazioni, poi Ripristina da un backup).",
+  "Inizia con un registro vuoto"
 ]
