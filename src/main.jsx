@@ -8,7 +8,7 @@ import { NATIVE_APP } from "./native.js";
 import "./storage.js";
 import { savedLang, setLanguage } from "./i18n.js";
 import { createRoot } from "react-dom/client";
-import App, { THEME_CSS, PALETTE_KEY, MOOD_KEY, MOOD_CSS } from "./App.jsx";
+import App, { THEME_CSS, PALETTE_KEY, MOOD_KEY, MOOD_CSS, TEXT_KEY, CONTRAST_KEY } from "./App.jsx";
 
 // Apply the saved appearance before the first paint, so dark mode never flashes white.
 const style = document.createElement("style");
@@ -37,6 +37,14 @@ try {
   // storage blocked: normal colors
 }
 document.documentElement.setAttribute("data-mood", /^[1-5]$/.test(mood) ? mood : "5");
+// Text size and high contrast ("Easier to see" in Settings).
+try {
+  const size = window.localStorage.getItem(TEXT_KEY);
+  if (size === "large" || size === "largest") document.documentElement.setAttribute("data-text", size);
+  if (window.localStorage.getItem(CONTRAST_KEY) === "high") document.documentElement.setAttribute("data-contrast", "high");
+} catch (e) {
+  // storage blocked: standard look
+}
 
 // Keep the browser's "install app" prompt so Settings can offer an Install button.
 window.addEventListener("beforeinstallprompt", (e) => {

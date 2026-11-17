@@ -1,3 +1,4 @@
+import { NATIVE_APP, nativeBioType, nativeBioSave, nativeBioLoad, nativeBioRemove } from "./native.js";
 // The account on this phone. Passwords and recovery codes never leave the device and are never stored.
 //
 // The record is encrypted (AES-GCM) with a random record key. That key is saved twice, each copy locked with a key
@@ -181,6 +182,7 @@ export function logOut() {
 export function eraseEverything() {
   const s = ls();
   if (s) Object.keys(s).filter((k) => k.startsWith("fabry-tracker-")).forEach((k) => s.removeItem(k));
+  if (NATIVE_APP) nativeBioRemove(NATIVE_BIO_KEY);
   logOut();
 }
 
@@ -195,7 +197,16 @@ const prfFirst = (cred) => {
   return ext.prf && ext.prf.results && ext.prf.results.first ? new Uint8Array(ext.prf.results.first) : null;
 };
 
+// Inside the iPhone and Android apps, the phone's own Keychain / Keystore is used instead (see native.js).
+const NATIVE_BIO_KEY = "rdt-bio";
+let nativeType = "";
+export const bioKind = () => nativeType; // "faceID", "touchID", "biometric" or "" (website: passkeys)
+
 export async function bioAvailable() {
+  if (NATIVE_APP) {
+    nativeType = await nativeBioType();
+    return Boolean(nativeType);
+  }
   try {
     if (!window.PublicKeyCredential || !navigator.credentials) return false;
     if (PublicKeyCredential.getClientCapabilities) {
@@ -221,9 +232,20 @@ async function bioSecret(credId, salt) {
 }
 
 // Turns on Face ID for this account. Must be logged in. The phone may ask for Face ID twice the first time.
-export async function enableBio() {
+export async function enableBio(prompt) {
   if (!vault.raw) throw new Error("locked");
   const a = readAccount();
+  if (NATIVE_APP) {
+    const secret = rand(32);
+    try {
+      await nativeBioSave(NATIVE_BIO_KEY, toB64(secret), prompt);
+    } catch (e) {
+      throw new Error(e.message === "cancelled" ? "cancelled" : "failed");
+    }
+    const wrapped = await encryptBytes(await prfKey(secret), vault.raw);
+    ls().setItem(ACCOUNT_KEY, JSON.stringify({ ...readAccount(), bio: { native: true, wrapped } }));
+    return;
+  }
   const salt = toB64(rand(32));
   let cred;
   try {
@@ -250,14 +272,22 @@ export async function enableBio() {
   ls().setItem(ACCOUNT_KEY, JSON.stringify({ ...readAccount(), bio: { credId, salt, wrapped } }));
 }
 
-export async function bioLogIn() {
+export async function bioLogIn(prompt) {
   const a = readAccount();
   if (!a || !a.bio) throw new Error("off");
   let secret;
-  try {
-    secret = await bioSecret(a.bio.credId, a.bio.salt);
-  } catch (e) {
-    throw new Error(e.message === "noprf" ? "noprf" : "cancelled");
+  if (a.bio.native) {
+    try {
+      secret = fromB64(await nativeBioLoad(NATIVE_BIO_KEY, prompt));
+    } catch (e) {
+      throw new Error(e.message === "cancelled" ? "cancelled" : "wrong");
+    }
+  } else {
+    try {
+      secret = await bioSecret(a.bio.credId, a.bio.salt);
+    } catch (e) {
+      throw new Error(e.message === "noprf" ? "noprf" : "cancelled");
+    }
   }
   let raw;
   try {
@@ -274,6 +304,7 @@ export async function bioLogIn() {
 export function disableBio() {
   const a = readAccount();
   if (!a) return;
+  if (a.bio && a.bio.native) nativeBioRemove(NATIVE_BIO_KEY);
   delete a.bio;
   ls().setItem(ACCOUNT_KEY, JSON.stringify(a));
 }

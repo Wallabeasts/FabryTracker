@@ -91,3 +91,66 @@ export async function saveFileInApp(text, filename, mime) {
   }
   return false;
 }
+
+// ---------- Face ID / fingerprint inside the phone apps ----------
+// Inside the apps the page can't use passkeys, so the phone's own secure storage is used instead:
+// - iPhone: the Keychain, with an item that only opens after Face ID or Touch ID (BiometricVault, in SceneDelegate.swift).
+// - Android: an Android Keystore key that only works after a strong fingerprint or face check (BioBridge, in MainActivity).
+// What is kept there is a random secret that locks a copy of the record key. It never leaves the phone.
+let bioSeq = 0;
+const bioWaiting = new Map();
+if (ANDROID_APP && typeof window !== "undefined") {
+  // MainActivity calls this when the fingerprint prompt finishes.
+  window.__rdtNativeBio = (id, ok, value, code) => {
+    const p = bioWaiting.get(id);
+    if (!p) return;
+    bioWaiting.delete(id);
+    if (ok) p.resolve(value || "");
+    else p.reject(new Error(code || "failed"));
+  };
+}
+const androidBio = () => (ANDROID_APP && window.AndroidBio ? window.AndroidBio : null);
+function androidCall(method, ...args) {
+  const b = androidBio();
+  if (!b || typeof b[method] !== "function") return Promise.reject(new Error("unavailable"));
+  const id = ++bioSeq;
+  return new Promise((resolve, reject) => {
+    bioWaiting.set(id, { resolve, reject });
+    try { b[method](id, ...args); } catch (e) { bioWaiting.delete(id); reject(new Error("failed")); }
+  });
+}
+const iosCall = (method, options) => prefsLike("BiometricVault", method, options);
+function prefsLike(plugin, method, options) {
+  const c = cap();
+  if (!c || typeof c.nativePromise !== "function") return Promise.reject(new Error("unavailable"));
+  return c.nativePromise(plugin, method, options).catch((e) => {
+    const code = (e && (e.code || e.message)) || "failed";
+    throw new Error(/cancel/i.test(code) ? "cancelled" : /changed|invalid/i.test(code) ? "changed" : String(code));
+  });
+}
+
+// Which kind of check this phone app offers: "faceID", "touchID", "biometric", or "" when none is set up.
+export async function nativeBioType() {
+  try {
+    if (IOS_APP) { const r = await iosCall("available"); return r && r.available ? r.type || "faceID" : ""; }
+    const b = androidBio();
+    if (b && typeof b.available === "function") return b.available() === "yes" ? "biometric" : "";
+  } catch (e) { /* none */ }
+  return "";
+}
+// Saves the secret behind Face ID / fingerprint. Android asks for a fingerprint here; iPhone doesn't need to.
+export async function nativeBioSave(key, value, prompt) {
+  if (IOS_APP) { await iosCall("save", { key, value }); return; }
+  await androidCall("save", key, value, prompt || "");
+}
+// Asks for Face ID / fingerprint and returns the secret.
+export async function nativeBioLoad(key, prompt) {
+  if (IOS_APP) { const r = await iosCall("load", { key, prompt: prompt || "" }); return (r && r.value) || ""; }
+  return androidCall("load", key, prompt || "");
+}
+export async function nativeBioRemove(key) {
+  try {
+    if (IOS_APP) await iosCall("remove", { key });
+    else await androidCall("remove", key);
+  } catch (e) { /* already gone */ }
+}

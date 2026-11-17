@@ -49,6 +49,23 @@ GitHub or to anyone else. The Learn tab sends only the chosen topic when it sear
 - The page includes a content security policy that only allows it to contact ClinicalTrials.gov, PubMed and
   Google Fonts.
 
+## Accessibility and Face ID in the apps (3.28)
+
+- **Face ID / fingerprint in the phone apps.** The iPhone app keeps a random secret in the Keychain, in an item that
+  only opens after Face ID or Touch ID (BiometricVault plugin in `ios-app/ios/App/App/SceneDelegate.swift`;
+  NSFaceIDUsageDescription in Info.plist). The Android app keeps it locked by an Android Keystore key that needs a strong
+  fingerprint or face check (BioBridge in MainActivity, USE_BIOMETRIC permission). That secret locks a copy of the record
+  key, exactly like the website's passkey version, and never leaves the phone. `src/native.js` and `src/vault.js` choose
+  the phone's own check inside the apps and passkeys on the website.
+- **Spoken chart summaries.** Every chart is read by VoiceOver and TalkBack as a short summary (number of results and
+  dates, latest value, change since the first result, highest and lowest, reference lines and medicine changes). A
+  Summary button under each chart shows it and can read it aloud with the phone's own voice.
+- **Easier to see (Settings).** Text size (Standard, Large, Largest; charts too) and High contrast (darker text,
+  stronger lines, thicker chart lines, clear focus outlines). Kept on the device only.
+- **Other:** buttons are at least 44 points tall; logging confirmations are announced to screen readers, stay up for
+  8 seconds and give a short buzz on Android; the Android app follows the phone's font size; the journal mentions
+  speaking entries with the keyboard microphone.
+
 ## New logo (3.27)
 
 - The zebra ribbon logo replaces the blue ribbon: on the welcome screen (src/App.jsx LOGO_FULL, background made

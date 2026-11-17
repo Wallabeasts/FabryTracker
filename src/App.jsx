@@ -4,7 +4,7 @@ import {
   SAMPLE_DATES, SAMPLE_FAMILIES,
 } from "./conditions.js";
 import {
-  createAccount, logIn, logOut, changePassword, resetPassword, replaceRecoveryCode, eraseEverything, bioAvailable, bioEnabled, enableBio, disableBio, bioLogIn, readAccount, isProtectedKey, cryptoAvailable, currentUser,
+  createAccount, logIn, logOut, changePassword, resetPassword, replaceRecoveryCode, eraseEverything, bioAvailable, bioEnabled, enableBio, disableBio, bioLogIn, bioKind, readAccount, isProtectedKey, cryptoAvailable, currentUser,
 } from "./vault.js";
 import { checkPassword } from "./passwords.js";
 import { NATIVE_APP, saveFileInApp } from "./native.js";
@@ -14,12 +14,12 @@ import { LANGS, currentLang, dateLocale, dyn, setLanguage, setConditionNames, tr
 
 // Condition names inside sentences are translated on their own (see i18n.js).
 // The names of the phone's own unlock (see BIO_NAME) are placeholders in sentences too, translated on their own.
-setConditionNames([...CONDITIONS.flatMap((c) => [c.name, c.short]), "Face ID or fingerprint", "Fingerprint or face unlock", "Face ID"]);
+setConditionNames([...CONDITIONS.flatMap((c) => [c.name, c.short]), "Face ID or fingerprint", "Fingerprint or face unlock", "Face ID", "Touch ID"]);
 
 // App name and developer details. Edit these to change the About section.
 const APP_INFO = {
   name: "My Rare Disease Tracker",
-  version: "3.27",
+  version: "3.28",
   contactEmail: "customerservice@myrarediseasetracker.com", // where the Contact us button sends email
   // App reviews go to a Google Form owned by rarediseasetracker@gmail.com. Fill these in from the form's
   // pre-filled link (see README). While formId is empty, Send opens an email with the review instead.
@@ -206,7 +206,25 @@ ${paletteCSS}
 html,body{background:var(--bg);color:var(--ink)}
 .brand-hero{background:radial-gradient(120% 55% at 50% -8%, rgba(30,100,240,0.34), transparent 68%), radial-gradient(90% 40% at 100% 105%, rgba(43,217,224,0.16), transparent 70%), #03060C}
 .brand-glow{box-shadow:0 0 0 1px rgba(70,200,230,0.35), 0 0 28px rgba(30,120,255,0.28)}`;
-export const MOOD_CSS = () => `${moodCSS}\n${SILLY_CSS}`;
+// "Easier to see" settings: bigger text everywhere (charts too) and high contrast. Kept on this device only.
+export const TEXT_KEY = "fabry-tracker-textsize";
+export const CONTRAST_KEY = "fabry-tracker-contrast";
+const HC_LIGHT = "--muted:#14223A !important;--line:#4A5866 !important;--grid:#B4BEC8 !important;--guide:#14223A !important;--accent:#08535B !important;";
+const HC_DARK = "--muted:#E6EDF5 !important;--line:#8DA2B8 !important;--grid:#3A4C64 !important;--guide:#E6EDF5 !important;--accent:#7FE0F5 !important;";
+const A11Y_CSS = `:root[data-text="large"]{font-size:112.5%}
+:root[data-text="largest"]{font-size:125%}
+:root[data-text="large"] svg text{font-size:12.5px}
+:root[data-text="largest"] svg text{font-size:14px}
+:root[data-contrast="high"]{${HC_LIGHT}}
+:root[data-contrast="high"][data-theme="dark"]{${HC_DARK}}
+@media (prefers-color-scheme: dark){:root[data-contrast="high"][data-theme="system"],:root[data-contrast="high"]:not([data-theme]){${HC_DARK}}}
+:root[data-contrast="high"] svg path.fx-draw{stroke-width:3.5px}
+:root[data-contrast="high"] svg .fx-dots circle{stroke:var(--surface);stroke-width:1.5px}
+:root[data-contrast="high"] :focus-visible{outline:3px solid var(--ink) !important;outline-offset:2px}
+:root[data-contrast="high"] a{text-decoration:underline}
+.app-main button:not([data-info-btn]){min-height:44px}
+.app-main a.underline:not(p a){display:inline-block;padding-top:10px;padding-bottom:10px}`;
+export const MOOD_CSS = () => `${moodCSS}\n${SILLY_CSS}\n${A11Y_CSS}`;
 export const PALETTE_KEY = "fabry-tracker-palette";
 // Color palette slider in Settings: 5 is the normal look; lower numbers swap the colors for something more playful,
 // down to 1, which is silly (bright colors, confetti dots and a fun font). Saved on this device only.
@@ -1011,8 +1029,103 @@ function InfoLabel({ id, htmlFor, labelId, children }) {
   );
 }
 
+// ---------- Spoken chart summaries ----------
+// Every chart gets a short summary in words: screen readers (VoiceOver, TalkBack) read it in place of the picture,
+// and the "Summary" button under each chart shows it and can read it aloud. Each sentence is translated on its own.
+const fmtNum = (v) => (Math.abs(v) >= 100 ? Math.round(v) : Math.round(v * 10) / 10);
+function medSentences(meds, t0, t1) {
+  const marks = medMarks(meds).filter((m) => isFinite(m.t) && m.t >= t0 && m.t <= t1).sort((a, b) => a.t - b.t);
+  const out = marks.slice(0, 6).map((m) => {
+    const d = fmtDate(m.t);
+    if (m.dash === "3 3") return `${dyn(m.text.replace(/ stop$/, ""))} stopped ${d}.`;
+    if (!m.dash) return `${dyn(m.text)} started ${d}.`;
+    return `Dose changed to ${dyn(m.text)} on ${d}.`;
+  });
+  if (marks.length > 6) out.push(`${marks.length - 6} more medicine changes are on this chart.`);
+  return out;
+}
+function chartSummary({ title, series, formatValue, meds = [], domain, refs = [] }) {
+  const fmt = (v, s, p) => dyn((formatValue ? String(formatValue(v, s, p)) : String(fmtNum(v))).replace(/\s*\([^)]*\)\s*$/, ""));
+  const out = [];
+  const many = series.filter((s) => s.points.some((p) => isFinite(p.v))).length > 1;
+  if (title) out.push(`${dyn(tr(title))}.`);
+  series.forEach((s) => {
+    const pts = s.points.filter((p) => isFinite(p.v)).sort((a, b) => a.t - b.t);
+    if (!pts.length) return;
+    const who = many ? `${dyn(tr(s.name || ""))}: ` : "";
+    const first = pts[0];
+    const last = pts[pts.length - 1];
+    const yesno = pts.every((p) => p.v === 0 || p.v === 1) && formatValue && /^(Yes|No)$/.test(String(formatValue(1, s, last)));
+    if (pts.length === 1) {
+      out.push(`${who}One result: ${fmt(last.v, s, last)} on ${fmtDate(last.t)}.`);
+      return;
+    }
+    out.push(`${who}${pts.length} results from ${fmtDate(first.t)} to ${fmtDate(last.t)}.`);
+    out.push(`Latest ${fmt(last.v, s, last)} on ${fmtDate(last.t)}.`);
+    if (yesno) {
+      out.push(`Yes on ${pts.filter((p) => p.v === 1).length} of ${pts.length}.`);
+      return;
+    }
+    const diff = last.v - first.v;
+    const pct = first.v > 0 && last.v >= 0 ? Math.round((diff / first.v) * 100) : null;
+    if (pct !== null ? Math.abs(pct) < 5 : Math.abs(diff) < 1e-9) out.push("About the same as the first result.");
+    else if (pct !== null) out.push(`${diff > 0 ? "Up" : "Down"} ${Math.abs(pct)}% since the first result.`);
+    else out.push(`${diff > 0 ? "Up" : "Down"} ${dyn(String(fmtNum(Math.abs(diff))))} since the first result.`);
+    if (pts.length >= 3) {
+      const hi = pts.reduce((a, p) => (p.v > a.v ? p : a), pts[0]);
+      const lo = pts.reduce((a, p) => (p.v < a.v ? p : a), pts[0]);
+      out.push(`Highest ${fmt(hi.v, s, hi)} on ${fmtDate(hi.t)}.`);
+      out.push(`Lowest ${fmt(lo.v, s, lo)} on ${fmtDate(lo.t)}.`);
+    }
+  });
+  if (refs.length) out.push(`Dashed lines mark ${dyn(refs.map((r) => r.label || r.value).join(", "))}.`);
+  if (domain) out.push(...medSentences(meds, domain[0], domain[1]));
+  return out;
+}
+const sayAll = (sentences) => sentences.map((x) => tr(x)).join(" ");
+
+// "Summary" under a chart: shows the words and can read them aloud with the phone's own voice.
+function ChartSummary({ sentences }) {
+  const [open, setOpen] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
+  const canSpeak = typeof window !== "undefined" && "speechSynthesis" in window && typeof SpeechSynthesisUtterance !== "undefined";
+  useEffect(() => () => { if (canSpeak && speaking) window.speechSynthesis.cancel(); }, [speaking]);
+  if (!sentences.length) return null;
+  const text = sayAll(sentences);
+  const speak = () => {
+    if (!canSpeak) return;
+    const synth = window.speechSynthesis;
+    if (speaking) { synth.cancel(); setSpeaking(false); return; }
+    const u = new SpeechSynthesisUtterance(text.replace(/[⁦-⁩]/g, ""));
+    u.lang = dateLocale() || "en-US";
+    u.onend = () => setSpeaking(false);
+    u.onerror = () => setSpeaking(false);
+    synth.cancel();
+    synth.speak(u);
+    setSpeaking(true);
+  };
+  return (
+    <div className="mt-2">
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} data-chart-summary
+        className="text-sm underline" style={{ color: C.accent, minHeight: 32 }}>
+        {open ? "Hide summary" : "Summary"}
+      </button>
+      {open && (
+        <div className="mt-1 p-3 rounded-lg text-sm" style={{ background: C.subtle, border: `1px solid ${C.line}`, color: C.ink }}>
+          <p className="mb-2">{sentences.map((x, i) => <Fragment key={i}>{i ? " " : ""}<span>{x}</span></Fragment>)}</p>
+          {canSpeak && (
+            <button type="button" onClick={speak} className="text-sm font-bold underline" style={{ color: C.accent, minHeight: 32 }}>
+              {speaking ? "Stop reading" : "Read aloud"}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Line chart over time. series: [{ key, name, color, points: [{ t, v, ...extra }] }]
-function TimeChart({ height = 200, domain, series, yDomain, yTicks, refY, meds = [], formatValue, label, tickLabel, dotsOnly, invert }) {
+function TimeChart({ height = 200, domain, series, yDomain, yTicks, refY, meds = [], formatValue, label, tickLabel, dotsOnly, invert, title }) {
   const marks = medMarks(meds);
   // One reference line or several (like the top and bottom of a normal range).
   const refs = (Array.isArray(refY) ? refY : refY ? [refY] : []).filter((r) => r && isFinite(r.value));
@@ -1060,11 +1173,13 @@ function TimeChart({ height = 200, domain, series, yDomain, yTicks, refY, meds =
   const hovered = hoverT === null ? [] : series
     .map((s) => ({ s, p: s.points.find((p) => p.t === hoverT) }))
     .filter((h) => h.p);
+  const summary = chartSummary({ title: title || String(label || "").split(/:| over time/)[0], series, formatValue, meds, domain, refs });
 
   return (
+    <>
     <div ref={wrapRef} className="relative" style={{ height }}>
       {width > 0 && (
-        <svg width={W} height={height} role="img" aria-label={label} tabIndex={0} onKeyDown={onKey}
+        <svg width={W} height={height} role="img" aria-label={sayAll(summary) || label} data-no-translate tabIndex={0} onKeyDown={onKey}
           onBlur={() => setHoverT(null)} style={{ display: "block", overflow: "visible", touchAction: "pan-y" }}>
           {ticks.map((v) => (
             <g key={`y${v}`}>
@@ -1130,11 +1245,13 @@ function TimeChart({ height = 200, domain, series, yDomain, yTicks, refY, meds =
         </Tip>
       )}
     </div>
+    <ChartSummary sentences={summary} />
+    </>
   );
 }
 
 // Stacked monthly bar chart. rows: [{ key, m, [series.key]: count }]
-function MonthBarChart({ height = 180, rows, series, meds = [], label }) {
+function MonthBarChart({ height = 180, rows, series, meds = [], label, title }) {
   const marks = medMarks(meds);
   const [wrapRef, width] = useWidth();
   const [hoverI, setHoverI] = useState(null);
@@ -1166,10 +1283,33 @@ function MonthBarChart({ height = 180, rows, series, meds = [], label }) {
     if (e.key === "Escape") setHoverI(null);
   };
 
+  // Words for screen readers and the Summary button: totals per kind, the busiest month, and medicine changes.
+  const summary = (() => {
+    const out = [];
+    const name = title || String(label || "").split(" per month")[0];
+    const grand = totals.reduce((a, b) => a + b, 0);
+    if (name) out.push(`${dyn(tr(name))}.`);
+    out.push(`${grand} in the last ${rows.length} months.`);
+    if (series.length > 1) series.forEach((sr) => {
+      const n = rows.reduce((a, row) => a + (row[sr.key] || 0), 0);
+      if (n) out.push(`${dyn(tr(sr.name))}: ${n}.`);
+    });
+    if (grand) {
+      const best = totals.indexOf(Math.max(...totals));
+      out.push(`Most in ${dyn(rows[best].full || rows[best].m)}: ${totals[best]}.`);
+    }
+    if (rows.length) {
+      const [y0, m0] = rows[0].key.split("-").map(Number);
+      out.push(...medSentences(meds, new Date(y0, m0 - 1, 1).getTime(), Date.now()));
+    }
+    return out;
+  })();
+
   return (
+    <>
     <div ref={wrapRef} className="relative" style={{ height }}>
       {width > 0 && (
-        <svg width={W} height={height} role="img" aria-label={label} tabIndex={0} onKeyDown={onKey}
+        <svg width={W} height={height} role="img" aria-label={sayAll(summary) || label} data-no-translate tabIndex={0} onKeyDown={onKey}
           onBlur={() => setHoverI(null)} style={{ display: "block", overflow: "visible", touchAction: "pan-y" }}>
           {ticks.map((v) => (
             <g key={`y${v}`}>
@@ -1220,6 +1360,8 @@ function MonthBarChart({ height = 180, rows, series, meds = [], label }) {
         </Tip>
       )}
     </div>
+    <ChartSummary sentences={summary} />
+    </>
   );
 }
 
@@ -3003,7 +3145,7 @@ const ALL_TOUR_STEPS = [
   {
     target: "settings",
     title: "Settings",
-    body: "Log out, change your password, turn on Face ID, switch between light and dark mode, contact us, and replay this tour.",
+    body: "Log out, change your password, turn on Face ID, make the text bigger or the colors stronger, switch between light and dark mode, contact us, and replay this tour.",
   },
   {
     target: "settings",
@@ -3476,6 +3618,48 @@ function ContactDialog({ region, onClose }) {
   );
 }
 
+// Text size and high contrast, for people with low vision. They change only how the app looks on this device.
+function EasierToSee() {
+  const root = typeof document !== "undefined" ? document.documentElement : null;
+  const [size, setSize] = useState(() => (root && root.getAttribute("data-text")) || "standard");
+  const [high, setHigh] = useState(() => Boolean(root && root.getAttribute("data-contrast") === "high"));
+  const pickSize = (v) => {
+    setSize(v);
+    if (v === "standard") root.removeAttribute("data-text"); else root.setAttribute("data-text", v);
+    window.storage.set(TEXT_KEY, v, false).catch(() => {});
+  };
+  const toggleHigh = (on) => {
+    setHigh(on);
+    if (on) root.setAttribute("data-contrast", "high"); else root.removeAttribute("data-contrast");
+    window.storage.set(CONTRAST_KEY, on ? "high" : "normal", false).catch(() => {});
+  };
+  const sizes = [["standard", "Standard"], ["large", "Large"], ["largest", "Largest"]];
+  return (
+    <fieldset className="mb-5" data-tour="easier-to-see">
+      <legend className="text-base font-bold mb-1">Easier to see</legend>
+      <p className="text-sm mb-3" style={{ color: C.muted }}>
+        Make the words and charts bigger, or the colors stronger. Every chart also has a Summary button that can read it aloud.
+      </p>
+      <div className="text-sm mb-1" id="text-size-label">Text size</div>
+      <div className="grid grid-cols-3 gap-2 mb-3" role="radiogroup" aria-labelledby="text-size-label">
+        {sizes.map(([id, label]) => (
+          <button key={id} type="button" role="radio" aria-checked={size === id} onClick={() => pickSize(id)}
+            className="py-2 rounded-lg font-bold focus:outline-none focus:ring-2"
+            style={{ minHeight: 44, fontSize: "0.95rem", background: size === id ? C.accent : C.subtle,
+              color: size === id ? C.onAccent : C.ink, border: `1px solid ${size === id ? C.accent : C.line}` }}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <label className="flex items-center gap-3" style={{ minHeight: 44 }}>
+        <input type="checkbox" checked={high} onChange={(e) => toggleHigh(e.target.checked)}
+          style={{ width: "1.4rem", height: "1.4rem", flexShrink: 0, accentColor: "var(--accent)" }} />
+        <span className="text-base">High contrast: darker text, stronger lines and thicker chart lines</span>
+      </label>
+    </fieldset>
+  );
+}
+
 function MoodSlider({ hint }) {
   const read = () => {
     const v = Number(typeof document !== "undefined" && document.documentElement.getAttribute("data-mood"));
@@ -3521,7 +3705,7 @@ function SettingsDialog({ theme, onTheme, region, onRegion, onTour, onTerms, onC
   const turnOnBio = async () => {
     setBio((b) => ({ ...b, busy: true, msg: "" }));
     try {
-      await enableBio();
+      await enableBio(tr(`Turn on ${BIO_NAME()} for ${APP_INFO.name}`));
       setBio((b) => ({ ...b, busy: false, on: true, err: false, msg: `Done. Next time, tap "Log in with ${BIO_NAME()}".` }));
     } catch (e) {
       setBio((b) => ({ ...b, busy: false, err: true, msg: e.message === "noprf"
@@ -3599,6 +3783,7 @@ function SettingsDialog({ theme, onTheme, region, onRegion, onTour, onTerms, onC
             })}
           </div>
         </fieldset>
+        <EasierToSee />
         <MoodSlider />
         <fieldset>
           <legend className="text-base font-bold mb-1">Region and units</legend>
@@ -5366,6 +5551,11 @@ function PasswordStrength({ value, username }) {
 
 // What the phone's built-in unlock is called.
 const BIO_NAME = () => {
+  // Inside the phone apps, the phone itself says which check it offers.
+  const kind = bioKind();
+  if (kind === "faceID") return "Face ID";
+  if (kind === "touchID") return "Touch ID";
+  if (kind === "biometric") return "Fingerprint or face unlock";
   try {
     const ua = navigator.userAgent;
     if (/iphone|ipad|ipod/i.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)) return "Face ID";
@@ -5499,6 +5689,9 @@ function LogIn({ account, onDone, onForgot }) {
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  // Inside the phone apps, ask the phone which check it offers, so the button names it (Face ID, Touch ID…).
+  const [, setBioKnown] = useState(false);
+  useEffect(() => { if (bioEnabled()) bioAvailable().then(() => setBioKnown(true)); }, []);
   const [tries, setTries] = useState(0);
   const [waitUntil, setWaitUntil] = useState(0);
   const [now, setNow] = useState(Date.now());
@@ -5514,7 +5707,7 @@ function LogIn({ account, onDone, onForgot }) {
     setBusy("bio");
     setBioErr("");
     try {
-      await bioLogIn();
+      await bioLogIn(tr(`Open your ${APP_INFO.name} record`));
       onDone({});
     } catch (x) {
       setBioErr(x.message === "cancelled"
@@ -6129,6 +6322,9 @@ function JournalIntro({ onStart }) {
         Every entry is saved with its date and time. It stays on this phone, locked with your password, and is included when
         you export a backup. It is never shared with family or your care team unless you show it to them.
       </p>
+      <p className="text-sm mb-4" style={{ color: C.heroText }}>
+        Rather talk than type? Tap the microphone on your keyboard to speak your entry, and your phone writes it down.
+      </p>
       <button onClick={onStart} className="fx-press px-5 py-3 rounded-md text-base font-bold focus:outline-none focus:ring-2"
         style={{ background: "#fff", color: C.hero }}>Start writing</button>
     </section>
@@ -6706,9 +6902,14 @@ function FabryTracker() {
     }
   };
 
+  // Confirmations stay up for 8 seconds (time to reach Undo), are read out by screen readers through the always-present
+  // live region below, and give a short buzz on phones that can (helpful when someone can't see or hear the screen well).
+  const [spoken, setSpoken] = useState("");
   useEffect(() => {
     if (!toast) return;
-    const h = setTimeout(() => setToast(null), 5000);
+    setSpoken(toast.text);
+    try { if (navigator.vibrate) navigator.vibrate(30); } catch (e) { /* no vibration */ }
+    const h = setTimeout(() => setToast(null), 8000);
     return () => clearTimeout(h);
   }, [toast]);
 
@@ -8629,8 +8830,9 @@ function FabryTracker() {
       {tourOn && <Tour onClose={() => { endTour(); setTab("trends"); }} onSample={loadSample} hasEntries={data.entries.length > 0}
         onTab={(t) => setTab((cur) => (cur === t ? cur : t))}
         quickLog={hasQuickLog(cond)} />}
+      <div className="sr-only" role="status" aria-live="polite">{spoken}</div>
       {toast && (
-        <div role="status" className="fixed left-0 right-0 px-4 flex justify-center"
+        <div className="fixed left-0 right-0 px-4 flex justify-center"
           style={{ bottom: "calc(72px + env(safe-area-inset-bottom))", zIndex: 70 }}>
           <div className="fx-toast flex items-center gap-4 px-4 py-3 rounded-lg text-base"
             style={{ background: C.invert, color: C.onInvert, maxWidth: 480, width: "100%" }}>
