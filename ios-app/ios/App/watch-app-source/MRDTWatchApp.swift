@@ -6,12 +6,12 @@ import SwiftUI
 // never to a server, and is added to the record on the phone.
 @main
 struct MRDTWatchApp: App {
-    @StateObject private var store = WatchStore()
+    @State private var store = WatchStore()
 
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .environmentObject(store)
+                .environment(store)
         }
     }
 }

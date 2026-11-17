@@ -1,5 +1,5 @@
 import Foundation
-import Combine
+import Observation
 import WatchConnectivity
 import WatchKit
 
@@ -32,13 +32,14 @@ struct WatchConfig: Codable, Equatable {
 // Keeps the setup from the phone and sends what the patient logs back to the phone. Runs on the main thread;
 // the WatchConnectivity callbacks below hop over to it.
 @MainActor
-final class WatchStore: NSObject, ObservableObject, @preconcurrency WCSessionDelegate {
-    @Published var config: WatchConfig?
+@Observable
+final class WatchStore: NSObject, @preconcurrency WCSessionDelegate {
+    var config: WatchConfig?
     // What was logged since the app opened, newest first. Kept only in memory: health details aren't saved on the watch.
-    @Published var recent: [String] = []
+    var recent: [String] = []
 
-    private let configKey = "mrdt-watch-config"
-    private var waiting: [[String: Any]] = []
+    @ObservationIgnored private let configKey = "mrdt-watch-config"
+    @ObservationIgnored private var waiting: [[String: Any]] = []
 
     override init() {
         super.init()

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ContentView: View {
-    @EnvironmentObject var store: WatchStore
+    @Environment(WatchStore.self) private var store
 
     var body: some View {
         NavigationStack {
@@ -44,7 +44,7 @@ struct ContentView: View {
 
 // A 1-to-10 score (or 0-to-10), as big buttons.
 struct ScoreView: View {
-    @EnvironmentObject var store: WatchStore
+    @Environment(WatchStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     let score: WatchConfig.Score
     @State private var done: Int?
@@ -81,7 +81,7 @@ struct ScoreView: View {
 
 // One-tap events, like a stomach episode or a migraine today.
 struct EventGroupView: View {
-    @EnvironmentObject var store: WatchStore
+    @Environment(WatchStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     let group: WatchConfig.Group
     @State private var done: String?
@@ -113,7 +113,7 @@ struct EventGroupView: View {
 // A lab result or medicine change, by voice. The watch's own dictation turns speech into words; the words are sent
 // to the phone, which shows the patient what it understood before saving.
 struct VoiceView: View {
-    @EnvironmentObject var store: WatchStore
+    @Environment(WatchStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     let ask: String
     let hint: String
