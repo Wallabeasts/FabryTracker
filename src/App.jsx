@@ -7,7 +7,7 @@ import {
   createAccount, logIn, logOut, changePassword, resetPassword, replaceRecoveryCode, eraseEverything, bioAvailable, bioEnabled, enableBio, disableBio, bioLogIn, bioKind, readAccount, isProtectedKey, cryptoAvailable, currentUser,
 } from "./vault.js";
 import { checkPassword } from "./passwords.js";
-import { NATIVE_APP, IOS_APP, saveFileInApp, healthAvailable, healthConnect, healthRead, watchStatus, watchSetup, watchPending, watchClear, nativeBioReason, nativeBioDevice, PORTAL_REDIRECT, nativePortalSignIn, nativeHttp, saveBinaryInApp, ANDROID_APP } from "./native.js";
+import { NATIVE_APP, IOS_APP, saveFileInApp, healthAvailable, healthConnect, healthRead, watchStatus, watchSetup, watchPending, watchClear, nativeBioReason, nativeBioDevice, PORTAL_REDIRECT, nativePortalSignIn, nativeHttp, saveBinaryInApp, ANDROID_APP, portalKeyPublic, portalKeySign, portalKeyRemove } from "./native.js";
 import { makeTrendsPdf } from "./trendsPdf.js";
 import { makeVoiceParser } from "./voice.js";
 import { labInfo } from "./labInfo.js";
@@ -2544,6 +2544,27 @@ function healthRows(raw, wanted) {
   return byDate;
 }
 
+// Health systems this record updates from by itself (iPhone app), each with a Stop button.
+function PortalLinkList({ links, onStop }) {
+  const list = Array.isArray(links) ? links.filter((l) => l && l.tag) : [];
+  if (!list.length) return null;
+  return (
+    <ul className="mb-3">
+      {list.map((l) => (
+        <li key={l.tag} className="flex items-center justify-between gap-3 py-2 text-sm" style={{ borderTop: `1px solid ${C.line}` }}>
+          <span>
+            <span className="font-bold">{l.systemName}</span>
+            <span className="block" style={{ color: C.muted }}>
+              Updates by itself each time you open the app{l.lastCheck ? `. Last checked ${fmtDate(toT(l.lastCheck))}` : ""}.
+            </span>
+          </span>
+          <Button kind="secondary" onClick={() => onStop(l)}>Stop</Button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function AppleHealthCard({ onOpen, lastHealth }) {
   const [can, setCan] = useState(false);
   useEffect(() => { healthAvailable().then(setCan); }, []);
@@ -2987,8 +3008,10 @@ async function startSignIn(system, onBack) {
   const verifier = randomString(64);
   const challenge = b64url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
   const state = randomString(32);
+  const registerEndpoint = isWebLink(cfg.registration_endpoint) ? cfg.registration_endpoint
+    : cfg.token_endpoint.replace(/\/token\/?$/, "/register");
   sessionStorage.setItem(CONNECT_KEY, JSON.stringify({
-    state, verifier, systemId: system.id, tokenEndpoint: cfg.token_endpoint, redirectUri: appAddress(),
+    state, verifier, systemId: system.id, tokenEndpoint: cfg.token_endpoint, registerEndpoint, redirectUri: appAddress(),
   }));
   const q = new URLSearchParams({
     response_type: "code", client_id: epicClientId(), redirect_uri: appAddress(), scope: EPIC.scope, state,
@@ -3039,12 +3062,36 @@ async function finishSignIn(fromApp) {
   }, system.name);
   if (!token.access_token || !token.patient) throw new Error(`${system.name} didn't grant access to your record`);
 
+  // In the iPhone app, also set up automatic updates (see registerAutoUpdate). If that isn't possible, the sign-in
+  // still works as before and the patient signs in again next time.
+  let link = null;
+  let accessToken = token.access_token;
+  if (IOS_APP && saved.registerEndpoint) {
+    link = await registerAutoUpdate(system, token, saved.tokenEndpoint, saved.registerEndpoint).catch(() => null);
+    if (link) {
+      // The first pass may only be good for setting this up, so the results are read with a new one.
+      const fresh = await autoUpdateToken(link).catch(() => null);
+      if (fresh && fresh.access_token) accessToken = fresh.access_token;
+    }
+  }
+  let result;
+  try {
+    result = await downloadRecord(system, accessToken, token.patient);
+  } catch (e) {
+    if (accessToken === token.access_token) throw e;
+    result = await downloadRecord(system, token.access_token, token.patient);
+  }
+  return { ...result, link };
+}
+
+// Reads the patient's details and lab results with an access token. Nothing is saved here.
+async function downloadRecord(system, accessToken, patientId) {
   const base = withSlash(system.fhirBase);
   const origin = new URL(base).origin;
-  const get = (url) => fetchJSON(url, { headers: { Authorization: `Bearer ${token.access_token}`, Accept: "application/fhir+json" } }, system.name);
-  const patient = await get(`${base}Patient/${encodeURIComponent(token.patient)}`);
+  const get = (url) => fetchJSON(url, { headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/fhir+json" } }, system.name);
+  const patient = await get(`${base}Patient/${encodeURIComponent(patientId)}`);
   const observations = [];
-  let url = `${base}Observation?patient=${encodeURIComponent(token.patient)}&category=laboratory&_count=200`;
+  let url = `${base}Observation?patient=${encodeURIComponent(patientId)}&category=laboratory&_count=200`;
   for (let page = 0; url && page < 20; page++) {
     const bundle = await get(url);
     (bundle.entry || []).forEach((e) => { if (e.resource && e.resource.resourceType === "Observation") observations.push(e.resource); });
@@ -3065,6 +3112,79 @@ async function finishSignIn(fromApp) {
     entries,
     skipped,
   };
+}
+
+// ---------- Automatic updates (iPhone app) ----------
+// After the patient signs in once, the app registers itself with the health system as this phone's own "dynamic
+// client" (Epic's way for phone apps to keep access). The phone makes a key pair; the health system keeps the
+// public key. Later, each time the app opens, it signs a short request with the private key to get a new
+// one-hour pass and reads any new results, with no MyChart sign-in, until the access period the patient chose
+// in MyChart ends. The private key never leaves the phone. What's saved in the record (`portalLinks`) is only
+// which health system, the client ID it gave this phone, and the name of the key.
+const textB64url = (text) => b64url(new TextEncoder().encode(text));
+
+async function registerAutoUpdate(system, token, tokenEndpoint, registerEndpoint) {
+  const tag = randomString(24);
+  try {
+    const jwk = await portalKeyPublic(tag);
+    if (!jwk || !jwk.n || !jwk.e) throw new Error("no key");
+    const reg = await fetchJSON(registerEndpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json", Authorization: `Bearer ${token.access_token}` },
+      body: JSON.stringify({ software_id: epicClientId(), jwks: { keys: [{ kty: "RSA", n: jwk.n, e: jwk.e }] } }),
+    }, system.name);
+    if (!reg || !reg.client_id) throw new Error("not registered");
+    return { systemId: system.id, systemName: system.name, clientId: String(reg.client_id), tokenEndpoint, tag,
+      patient: String(token.patient), since: today(), lastCheck: today() };
+  } catch (e) {
+    await portalKeyRemove(tag);
+    throw e;
+  }
+}
+
+// Gets a new access token for a saved link (JWT bearer). Throws an error with `ended` set when the health system
+// no longer accepts it (the access period ran out, or the patient removed the app in MyChart).
+async function autoUpdateToken(link) {
+  const now = Math.floor(Date.now() / 1000) - 30; // a little early, in case the phone's clock is slightly ahead
+  const head = textB64url(JSON.stringify({ alg: "RS384", typ: "JWT" }));
+  const body = textB64url(JSON.stringify({
+    iss: link.clientId, sub: link.clientId, aud: link.tokenEndpoint, jti: randomString(32), iat: now, nbf: now, exp: now + 270,
+  }));
+  let signature;
+  try {
+    signature = await portalKeySign(link.tag, `${head}.${body}`);
+  } catch (e) {
+    throw Object.assign(new Error("This phone's key for the connection is missing"), { ended: true });
+  }
+  if (!signature) throw Object.assign(new Error("This phone's key for the connection is missing"), { ended: true });
+  let r;
+  try {
+    r = await nativeHttp(link.tokenEndpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+      body: new URLSearchParams({
+        grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion: `${head}.${body}.${signature}`, client_id: link.clientId,
+      }).toString(),
+    });
+  } catch (e) {
+    throw new Error("unreachable");
+  }
+  let json = null;
+  try { json = JSON.parse(r.text); } catch (e) { json = null; }
+  if (r.status >= 200 && r.status < 300 && json && json.access_token) return json;
+  const code = (json && json.error) || "";
+  if ([400, 401, 403].includes(r.status) && /invalid_grant|invalid_client|unauthorized_client|access_denied/.test(code)) {
+    throw Object.assign(new Error("ended"), { ended: true });
+  }
+  throw new Error(`error ${r.status}`);
+}
+
+// Reads the latest results for a saved link. Resolves with the same shape as finishSignIn (without `link`).
+async function autoUpdateRecord(link) {
+  const system = HEALTH_SYSTEMS.find((s) => s.id === link.systemId);
+  if (!system) throw Object.assign(new Error("That health system is no longer in the list"), { ended: true });
+  const token = await autoUpdateToken(link);
+  return downloadRecord(system, token.access_token, String(token.patient || link.patient));
 }
 
 function Bullets({ items }) {
@@ -3102,7 +3222,7 @@ function StepList({ items }) {
 }
 
 // Walks a patient through connecting their MyChart account, one screen at a time.
-function ConnectWizard({ connect, setConnect, region, units, profile, personName, metricIds, existingFhirIds, onImport, onClose, onSeeCharts }) {
+function ConnectWizard({ connect, setConnect, region, units, profile, personName, metricIds, existingFhirIds, onImport, onLink, onUnlink, onClose, onSeeCharts }) {
   const [systemId, setSystemId] = useState(HEALTH_SYSTEMS.length === 1 ? HEALTH_SYSTEMS[0].id : "");
   const [search, setSearch] = useState("");
   const [useProfile, setUseProfile] = useState(true);
@@ -3111,6 +3231,10 @@ function ConnectWizard({ connect, setConnect, region, units, profile, personName
   const go = (s) => setConnect({ ...connect, stage: s });
   const clientReady = Boolean(epicClientId());
   const numbered = { intro: 1, system: 2, prepare: 3 };
+
+  // Automatic updates (iPhone app) are kept as soon as the results are shown; "Don't add" removes them again.
+  const linkResult = connect.stage === "review" && connect.result && connect.result.link;
+  useEffect(() => { if (linkResult && onLink) onLink(linkResult); }, [linkResult]);
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape" && !["signing", "working"].includes(stage)) onClose(); };
@@ -3279,6 +3403,11 @@ function ConnectWizard({ connect, setConnect, region, units, profile, personName
           </p>
         )}
         {already > 0 && <p className="text-sm mb-1" style={{ color: C.muted }}>{already} results were already added before and will be skipped.</p>}
+        {r.link && (
+          <p className="text-sm mb-1" style={{ color: C.muted }}>
+            {`New results will be added by themselves each time you open ${APP_INFO.name}, for as long as you allowed in MyChart.`}
+          </p>
+        )}
         {r.skipped.length > 0 && (
           <p className="text-sm mb-1" style={{ color: C.muted }}>
             {r.skipped.length} results were left out because they weren't final yet or used a unit the app can't convert.
@@ -3299,11 +3428,11 @@ function ConnectWizard({ connect, setConnect, region, units, profile, personName
             <>
               <Button onClick={() => {
                 const n = onImport(fresh, needProfile && useProfile ? r.profile : null, r.systemName);
-                setConnect({ stage: "done", added: n, systemName: r.systemName });
+                setConnect({ stage: "done", added: n, systemName: r.systemName, linked: Boolean(r.link) });
               }}>
                 {fresh.length ? `Add ${fresh.length} results` : "Update my profile"}
               </Button>
-              <Button kind="secondary" onClick={onClose}>Don't add</Button>
+              <Button kind="secondary" onClick={() => { if (r.link && onUnlink) onUnlink(r.link); onClose(); }}>Don't add</Button>
             </>
           ) : (
             <Button onClick={onClose}>Close</Button>
@@ -3321,13 +3450,15 @@ function ConnectWizard({ connect, setConnect, region, units, profile, personName
         <section className="p-4 mb-4 rounded-lg" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
           <h3 className="text-base font-bold mb-1">Getting new results later</h3>
           <p className="text-sm mb-3">
-            After your next lab tests, open Settings, choose Connect your health record, and sign in again. Results you've
-            already added won't be added twice.
+            {connect.linked
+              ? `Each time you open ${APP_INFO.name}, it checks ${connect.systemName} for new results and adds them, until the time you allowed in MyChart runs out. After that, connect again here. Results you've already added won't be added twice.`
+              : "After your next lab tests, open Settings, choose Connect your health record, and sign in again. Results you've already added won't be added twice."}
           </p>
           <h3 className="text-base font-bold mb-1">Stopping sharing</h3>
           <p className="text-sm">
-            {APP_INFO.name} doesn't keep ongoing access: each connection ends when you finish. To review apps you've allowed,
-            look in MyChart's settings, often under Linked Apps and Devices.
+            {connect.linked
+              ? `To stop automatic updates, open Settings and choose Stop next to ${connect.systemName}. You can also remove ${APP_INFO.name} in MyChart's settings, often under Linked Apps and Devices.`
+              : `${APP_INFO.name} doesn't keep ongoing access: each connection ends when you finish. To review apps you've allowed, look in MyChart's settings, often under Linked Apps and Devices.`}
           </p>
         </section>
         <Button onClick={onSeeCharts}>See my charts</Button>
@@ -4037,7 +4168,7 @@ function MoodSlider({ hint }) {
   );
 }
 
-function SettingsDialog({ theme, onTheme, region, onRegion, onTour, onTerms, onConnect, onContact, onReview, onPassword, onNewCode, lastImport, onAppleHealth, lastHealth, onClose }) {
+function SettingsDialog({ theme, onTheme, region, onRegion, onTour, onTerms, onConnect, onContact, onReview, onPassword, onNewCode, lastImport, portalLinks, onStopLink, onAppleHealth, lastHealth, onClose }) {
   const closeRef = useRef(null);
   const [bio, setBio] = useState({ can: false, on: bioEnabled(), busy: false, msg: "", err: false, why: "" });
   useEffect(() => {
@@ -4169,6 +4300,7 @@ function SettingsDialog({ theme, onTheme, region, onRegion, onTour, onTerms, onC
                 Copy your lab results from Epic MyChart. We'll walk you through each step.
                 {lastImport ? ` Last added ${fmtDate(toT(lastImport.date))} from ${lastImport.source}.` : ""}
               </p>
+              <PortalLinkList links={portalLinks} onStop={onStopLink} />
               <Button onClick={onConnect}>Connect your health record</Button>
             </>
           )}
@@ -7343,6 +7475,80 @@ function FabryTracker() {
     return added.length;
   };
 
+  // Automatic updates from a health system (iPhone app; see registerAutoUpdate). One link per health system per person.
+  const linkPortal = (link) => {
+    setData((d) => {
+      const links = Array.isArray(d.portalLinks) ? d.portalLinks : [];
+      links.filter((l) => l.systemId === link.systemId && l.tag !== link.tag).forEach((l) => portalKeyRemove(l.tag));
+      if (links.some((l) => l.tag === link.tag)) return d;
+      return { ...d, portalLinks: [...links.filter((l) => l.systemId !== link.systemId), link] };
+    });
+  };
+  const unlinkPortal = (link) => {
+    portalKeyRemove(link.tag);
+    setData((d) => ({ ...d, portalLinks: (Array.isArray(d.portalLinks) ? d.portalLinks : []).filter((l) => l.tag !== link.tag) }));
+  };
+  // Checks each linked health system for new results when the record opens, and again when the app comes back to
+  // the front if it's been at least 30 minutes. New results are added straight away, with Undo.
+  const portalBusy = useRef(false);
+  const portalChecked = useRef({});
+  useEffect(() => {
+    if (!IOS_APP || !loaded) return undefined;
+    const run = async (first) => {
+      if (portalBusy.current || document.hidden) return;
+      const pid = peopleRef.current.active;
+      const rec = recordsRef.current[pid];
+      const links = rec && Array.isArray(rec.portalLinks) ? rec.portalLinks : [];
+      const due = links.filter((l) => l && l.tag && l.clientId && l.tokenEndpoint
+        && (first || Date.now() - (portalChecked.current[l.tag] || 0) > 30 * 60 * 1000));
+      if (!due.length) return;
+      portalBusy.current = true;
+      try {
+        for (const link of due) {
+          portalChecked.current[link.tag] = Date.now();
+          try {
+            const r = await autoUpdateRecord(link);
+            const cur = recordsRef.current[pid];
+            if (!cur) continue;
+            const allowed = condMetricIds(condOf(cur));
+            const have = new Set((cur.entries || []).map((e) => e.fhirId).filter(Boolean));
+            const added = r.entries.filter((e) => !have.has(e.fhirId) && allowed.has(e.metric))
+              .map((e) => ({ id: uid(), date: e.date, [e.metric]: e.value, fhirId: e.fhirId, source: "record" }));
+            setRecords((rs) => {
+              const x = rs[pid];
+              if (!x) return rs;
+              const haveNow = new Set((x.entries || []).map((e) => e.fhirId).filter(Boolean));
+              const add = added.filter((a) => !haveNow.has(a.fhirId));
+              return { ...rs, [pid]: { ...x,
+                entries: add.length ? [...(x.entries || []), ...add] : x.entries,
+                portalLinks: (x.portalLinks || []).map((l) => (l.tag === link.tag && l.lastCheck !== today() ? { ...l, lastCheck: today() } : l)),
+                lastImport: add.length ? { date: today(), source: link.systemName, count: add.length } : x.lastImport } };
+            });
+            if (added.length) {
+              const ids = new Set(added.map((a) => a.id));
+              setToast({
+                text: added.length === 1 ? `1 new result added from ${link.systemName}` : `${added.length} new results added from ${link.systemName}`,
+                undo: () => setRecords((rs) => (rs[pid] ? { ...rs, [pid]: { ...rs[pid], entries: rs[pid].entries.filter((e) => !ids.has(e.id)) } } : rs)),
+              });
+            }
+          } catch (e) {
+            if (!e.ended) continue; // offline or a passing problem: try again later
+            portalKeyRemove(link.tag);
+            setRecords((rs) => (rs[pid] ? { ...rs, [pid]: { ...rs[pid],
+              portalLinks: (rs[pid].portalLinks || []).filter((l) => l.tag !== link.tag) } } : rs));
+            setToast({ text: `Automatic updates from ${link.systemName} have ended. To keep getting new results, connect again in Settings.` });
+          }
+        }
+      } finally {
+        portalBusy.current = false;
+      }
+    };
+    run(true);
+    const onShow = () => { if (!document.hidden) run(false); };
+    document.addEventListener("visibilitychange", onShow);
+    return () => document.removeEventListener("visibilitychange", onShow);
+  }, [loaded, activeId]);
+
   // ----- Correcting and deleting -----
   // Every change can be undone from the bar at the bottom for a few seconds.
   const [table, setTable] = useState(null); // which chart's table is open: { kind, id }
@@ -9281,6 +9487,7 @@ function FabryTracker() {
                   Copy your lab results from Epic MyChart instead of typing them.
                   {data.lastImport ? ` Last added ${fmtDate(toT(data.lastImport.date))} from ${data.lastImport.source}.` : ""}
                 </p>
+                <PortalLinkList links={data.portalLinks} onStop={unlinkPortal} />
                 <Button onClick={() => setConnect({ stage: "intro" })}>Connect your health record</Button>
               </section>
             )}
@@ -9452,6 +9659,7 @@ function FabryTracker() {
         onPassword={() => { setShowSettings(false); setShowPassword(true); }}
         onNewCode={() => { setShowSettings(false); setShowNewCode(true); }}
         onConnect={() => { setShowSettings(false); setConnect({ stage: "intro" }); }} lastImport={data.lastImport}
+        portalLinks={data.portalLinks} onStopLink={unlinkPortal}
         onAppleHealth={() => { setShowSettings(false); setAppleHealth(true); }} lastHealth={data.lastHealth}
         onClose={() => setShowSettings(false)} />}
       {connect && (
@@ -9459,6 +9667,7 @@ function FabryTracker() {
           personName={family ? (activePerson.id === SELF ? "your" : `${personLabel(activePerson)}'s`) : ""}
           metricIds={condMetricIds(cond)}
           existingFhirIds={new Set(data.entries.map((e) => e.fhirId).filter(Boolean))} onImport={importRecord}
+          onLink={linkPortal} onUnlink={unlinkPortal}
           onClose={() => setConnect(null)} onSeeCharts={() => { setConnect(null); setTab("trends"); }} />
       )}
       {showTerms && <TermsDialog accepted={terms} onClose={() => setShowTerms(false)} />}
