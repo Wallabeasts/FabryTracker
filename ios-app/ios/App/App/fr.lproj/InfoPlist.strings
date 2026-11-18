@@ -1,0 +1,5 @@
+/* My Rare Disease Tracker: name and permission messages in this language */
+"CFBundleDisplayName" = "My RDT";
+"NSFaceIDUsageDescription" = "Face ID ouvre votre dossier de santé sans saisir votre mot de passe. Les données de votre visage restent sur votre iPhone.";
+"NSHealthShareUsageDescription" = "Si vous choisissez de connecter Santé d'Apple, l'app lit votre tension artérielle, votre fréquence cardiaque au repos, votre poids et votre taille et les ajoute à votre dossier sur cet iPhone. Rien n'est envoyé à nous ni à personne d'autre.";
+"NSHealthUpdateUsageDescription" = "My Rare Disease Tracker lit seulement les données de Santé d'Apple. Elle n'écrit, ne modifie et ne supprime jamais rien dans Santé.";
