@@ -291,3 +291,13 @@ export async function saveBinaryInApp(bytes, filename, mime) {
   }
   return false;
 }
+
+// ---------- Automatic lab updates from the health system (iPhone app only) ----------
+// PortalKeyPlugin in SceneDelegate.swift keeps an RSA key pair in the iPhone's Keychain, one per connection. The
+// private key never leaves the phone; the app only asks the phone to sign short requests with it.
+export const portalKeyPublic = (tag) => prefsLike("PortalKey", "publicKey", { tag });
+export const portalKeySign = (tag, data) => prefsLike("PortalKey", "sign", { tag, data }).then((r) => (r && r.signature) || "");
+export async function portalKeyRemove(tag) {
+  if (!IOS_APP || !tag) return;
+  try { await prefsLike("PortalKey", "remove", { tag }); } catch (e) { /* already gone */ }
+}

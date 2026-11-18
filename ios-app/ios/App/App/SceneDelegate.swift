@@ -34,6 +34,7 @@ class AppBridgeViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(WatchSyncPlugin())
         bridge?.registerPluginInstance(PortalSignInPlugin())
         bridge?.registerPluginInstance(NativeHttpPlugin())
+        bridge?.registerPluginInstance(PortalKeyPlugin())
         WatchLink.shared.start()
     }
 }
@@ -485,5 +486,118 @@ public class NativeHttpPlugin: CAPPlugin, CAPBridgedPlugin {
             let text = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
             call.resolve(["status": status, "text": text])
         }.resume()
+    }
+}
+
+
+// Automatic lab updates from the patient's health system (Epic "dynamic client", JWT bearer), used by src/native.js.
+// After the patient signs in once, the app makes its own RSA key pair here and registers the public half with the
+// health system. Later, each time the app opens, it signs a short request with the private key to get a new
+// one-hour pass, without asking the patient to sign in again, until the access period the patient chose ends.
+// The private key stays in this iPhone's Keychain: it can't be read out, isn't backed up, and never leaves the phone.
+@objc(PortalKeyPlugin)
+public class PortalKeyPlugin: CAPPlugin, CAPBridgedPlugin {
+    public let identifier = "PortalKeyPlugin"
+    public let jsName = "PortalKey"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "publicKey", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "sign", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "remove", returnType: CAPPluginReturnPromise),
+    ]
+
+    private func tagData(_ name: String) -> Data { "com.myrarediseasetracker.portal.\(name)".data(using: .utf8)! }
+
+    private func findKey(_ name: String) -> SecKey? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassKey,
+            kSecAttrApplicationTag as String: tagData(name),
+            kSecAttrKeyType as String: kSecAttrKeyTypeRSA,
+            kSecReturnRef as String: true,
+        ]
+        var item: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess, let found = item else { return nil }
+        return (found as! SecKey)
+    }
+
+    private func makeKey(_ name: String) -> SecKey? {
+        let attributes: [String: Any] = [
+            kSecAttrKeyType as String: kSecAttrKeyTypeRSA,
+            kSecAttrKeySizeInBits as String: 2048,
+            kSecPrivateKeyAttrs as String: [
+                kSecAttrIsPermanent as String: true,
+                kSecAttrApplicationTag as String: tagData(name),
+                kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+            ],
+        ]
+        var error: Unmanaged<CFError>?
+        return SecKeyCreateRandomKey(attributes as CFDictionary, &error)
+    }
+
+    private static func b64url(_ d: Data) -> String {
+        d.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+
+    // The public key comes out as an RSAPublicKey (PKCS#1): SEQUENCE { modulus INTEGER, exponent INTEGER }.
+    private static func modulusAndExponent(_ der: Data) -> (Data, Data)? {
+        let b = [UInt8](der)
+        var i = 0
+        func length() -> Int? {
+            guard i < b.count else { return nil }
+            var n = Int(b[i]); i += 1
+            if n & 0x80 != 0 {
+                let count = n & 0x7f
+                guard count > 0, count <= 4, i + count <= b.count else { return nil }
+                n = 0
+                for _ in 0..<count { n = (n << 8) | Int(b[i]); i += 1 }
+            }
+            return n
+        }
+        func integer() -> Data? {
+            guard i < b.count, b[i] == 0x02 else { return nil }
+            i += 1
+            guard let n = length(), i + n <= b.count else { return nil }
+            var bytes = Array(b[i..<(i + n)]); i += n
+            while bytes.count > 1 && bytes[0] == 0 { bytes.removeFirst() }
+            return Data(bytes)
+        }
+        guard b.first == 0x30 else { return nil }
+        i = 1
+        guard length() != nil, let n = integer(), let e = integer() else { return nil }
+        return (n, e)
+    }
+
+    // Returns the public key (as JWK n and e), making the key pair first if this tag has none yet.
+    @objc func publicKey(_ call: CAPPluginCall) {
+        guard let name = call.getString("tag"), !name.isEmpty else { call.reject("No key name", "failed"); return }
+        guard let key = findKey(name) ?? makeKey(name), let pub = SecKeyCopyPublicKey(key) else {
+            call.reject("The key couldn't be made", "failed"); return
+        }
+        var error: Unmanaged<CFError>?
+        guard let der = SecKeyCopyExternalRepresentation(pub, &error) as Data?,
+              let parts = PortalKeyPlugin.modulusAndExponent(der) else {
+            call.reject("The key couldn't be read", "failed"); return
+        }
+        call.resolve(["n": PortalKeyPlugin.b64url(parts.0), "e": PortalKeyPlugin.b64url(parts.1)])
+    }
+
+    // Signs the text with RS384 (RSA PKCS#1 v1.5, SHA-384) and returns the signature, base64url.
+    @objc func sign(_ call: CAPPluginCall) {
+        guard let name = call.getString("tag"), let text = call.getString("data"), let data = text.data(using: .utf8) else {
+            call.reject("Nothing to sign", "failed"); return
+        }
+        guard let key = findKey(name) else { call.reject("No key", "missing"); return }
+        var error: Unmanaged<CFError>?
+        guard let sig = SecKeyCreateSignature(key, .rsaSignatureMessagePKCS1v15SHA384, data as CFData, &error) as Data? else {
+            call.reject("The request couldn't be signed", "failed"); return
+        }
+        call.resolve(["signature": PortalKeyPlugin.b64url(sig)])
+    }
+
+    @objc func remove(_ call: CAPPluginCall) {
+        guard let name = call.getString("tag") else { call.resolve(); return }
+        let query: [String: Any] = [kSecClass as String: kSecClassKey, kSecAttrApplicationTag as String: tagData(name)]
+        SecItemDelete(query as CFDictionary)
+        call.resolve()
     }
 }
