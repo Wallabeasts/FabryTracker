@@ -48,7 +48,7 @@ struct RecentItem: Identifiable {
 // the shared context (arrives whenever the phone app runs, even later), and Apple's queue.
 @MainActor
 @Observable
-final class WatchStore: NSObject, @preconcurrency WCSessionDelegate {
+final class WatchStore: NSObject, WCSessionDelegate {
     var config: WatchConfig?
     // What was logged since the app opened, newest first.
     var recent: [RecentItem] = []
