@@ -2835,7 +2835,7 @@ function AppleWatchCard() {
 const EPIC = {
   // Non-production client ID from fhir.epic.com while testing, production client ID when live.
   // Empty means the connection isn't switched on yet: patients can read the steps but can't sign in.
-  clientId: "f535689e-40a5-46b7-b799-db6ca012916f", // non-production (Epic sandbox), new registration Nov 17, 2026 (website + app redirects)
+  clientId: "4e67c358-b85d-4cbe-986f-1d755a4a51cf", // Non-Production (Epic sandbox) client ID of the "My Rare Disease Tracker" registration (appId 65257). Production ID: eeef3b2a-1c70-420f-b6ee-ba2d70b1a2be
   scope: "launch/patient openid fhirUser patient/Patient.read patient/Observation.read",
 };
 // Health systems patients can choose. Add production systems from Epic's published list of patient-access
