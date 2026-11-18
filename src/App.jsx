@@ -7,7 +7,8 @@ import {
   createAccount, logIn, logOut, changePassword, resetPassword, replaceRecoveryCode, eraseEverything, bioAvailable, bioEnabled, enableBio, disableBio, bioLogIn, bioKind, readAccount, isProtectedKey, cryptoAvailable, currentUser,
 } from "./vault.js";
 import { checkPassword } from "./passwords.js";
-import { NATIVE_APP, IOS_APP, saveFileInApp, healthAvailable, healthConnect, healthRead, watchStatus, watchSetup, watchPending, watchClear, nativeBioReason, nativeBioDevice, PORTAL_REDIRECT, nativePortalSignIn, nativeHttp } from "./native.js";
+import { NATIVE_APP, IOS_APP, saveFileInApp, healthAvailable, healthConnect, healthRead, watchStatus, watchSetup, watchPending, watchClear, nativeBioReason, nativeBioDevice, PORTAL_REDIRECT, nativePortalSignIn, nativeHttp, saveBinaryInApp, ANDROID_APP } from "./native.js";
+import { makeTrendsPdf } from "./trendsPdf.js";
 import { makeVoiceParser } from "./voice.js";
 import { labInfo } from "./labInfo.js";
 import { ALERT_EVERY_DAYS, alertDue, cleanWatch, countryName, countryOptions, fetchEnrolling, matchTrials } from "./trialAlerts.js";
@@ -220,6 +221,8 @@ const A11Y_CSS = `:root[data-text="large"]{font-size:112.5%}
 :root[data-contrast="high"][data-theme="dark"]{${HC_DARK}}
 @media (prefers-color-scheme: dark){:root[data-contrast="high"][data-theme="system"],:root[data-contrast="high"]:not([data-theme]){${HC_DARK}}}
 :root[data-contrast="high"] svg path.fx-draw{stroke-width:3.5px}
+:root[data-printing] *{animation:none !important;transition:none !important}
+:root[data-printing] .fx-draw{stroke-dasharray:none !important;stroke-dashoffset:0 !important}
 :root[data-contrast="high"] svg .fx-dots circle{stroke:var(--surface);stroke-width:1.5px}
 :root[data-contrast="high"] :focus-visible{outline:3px solid var(--ink) !important;outline-offset:2px}
 :root[data-contrast="high"] a{text-decoration:underline}
@@ -2832,7 +2835,7 @@ function AppleWatchCard() {
 const EPIC = {
   // Non-production client ID from fhir.epic.com while testing, production client ID when live.
   // Empty means the connection isn't switched on yet: patients can read the steps but can't sign in.
-  clientId: "54aba82f-304d-4455-b040-56bc0fc48512", // non-production (Epic sandbox), registered Sept 25, 2026
+  clientId: "4e67c358-b85d-4cbe-986f-1d755a4a51cf", // Non-Production (Epic sandbox) client ID of the "My Rare Disease Tracker" registration (appId 65257). Production ID: eeef3b2a-1c70-420f-b6ee-ba2d70b1a2be
   scope: "launch/patient openid fhirUser patient/Patient.read patient/Observation.read",
 };
 // Health systems patients can choose. Add production systems from Epic's published list of patient-access
@@ -7477,6 +7480,74 @@ function FabryTracker() {
   const condNameOf = (id) => { const c = condOf(records[id]); return c.short.charAt(0).toUpperCase() + c.short.slice(1); };
   const family = people.list.length > 1;
 
+  // ----- Save the Trends page as a PDF -----
+  const trendsRef = useRef(null);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const saveTrendsPdf = async () => {
+    if (pdfBusy) return;
+    setPdfBusy(true);
+    setExportAsk("");
+    const fromTab = tab;
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    if (tab !== "trends") { setTab("trends"); await wait(250); }
+    if (!trendsRef.current) { setPdfBusy(false); setTab(fromTab); return; }
+    const root = document.documentElement;
+    const before = { theme: root.getAttribute("data-theme"), collapsed, width: trendsRef.current.style.width };
+    // Every section open, the light look, no animations, and a page-like width while the charts are drawn.
+    setCollapsed({});
+    root.setAttribute("data-theme", "light");
+    root.setAttribute("data-printing", "");
+    trendsRef.current.style.width = "440px";
+    try {
+      await wait(900);
+      const dateFmt = (t) => new Date(t).toLocaleDateString(dateLocale(), { day: "numeric", month: "short", year: "numeric" });
+      const p = data.profile || {};
+      const lines = [
+        p.phenotype ? tr(p.phenotype) : "",
+        p.mutation ? `${geneLabel(cond)} ${p.mutation}` : "",
+        p.birthDate ? `${tr("Date of birth")}: ${dateFmt(toT(p.birthDate))}` : "",
+      ].filter(Boolean);
+      const now = Date.now();
+      const treatments = sortedMeds.map(effectiveMed).filter((m) => !m.stop || toT(m.stop) >= now)
+        .map((m) => [tr(medInfo(m).name), doseOn(m, now), m.start ? `${tr("Started")} ${dateFmt(toT(m.start))}` : ""].filter(Boolean).join(" · "));
+      const bytes = await makeTrendsPdf(trendsRef.current, {
+        paper: region === "us" ? "letter" : "a4",
+        logo: await new Promise((r) => { const i = new Image(); i.onload = () => r(i); i.onerror = () => r(null); i.src = LOGO_EMBLEM; }),
+        name: String(activePerson.name || "").trim(),
+        condition: tr(cond.name),
+        lines,
+        treatments,
+        made: dateFmt(now),
+      });
+      const filename = `My-RDT-Trends-${today()}.pdf`;
+      let done = NATIVE_APP ? await saveBinaryInApp(bytes, filename, "application/pdf") : false;
+      if (!done && !NATIVE_APP) {
+        const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+        done = true;
+      }
+      setToast({ text: done ? "Your PDF is ready" : "The PDF couldn't be saved on this phone. Please update the app." });
+    } catch (e) {
+      setToast({ text: "The PDF couldn't be made. Please try again." });
+    } finally {
+      trendsRef.current && (trendsRef.current.style.width = before.width);
+      root.removeAttribute("data-printing");
+      if (before.theme === null) root.removeAttribute("data-theme"); else root.setAttribute("data-theme", before.theme);
+      setCollapsed(before.collapsed);
+      setPdfBusy(false);
+      if (fromTab !== "trends") {
+        setTab(fromTab);
+        setTimeout(() => { const el = document.getElementById("export"); if (el) el.scrollIntoView({ block: "start" }); }, 120);
+      }
+    }
+  };
+
   // ----- Apple Watch (iPhone app) -----
   const recordsRef = useRef(records);
   recordsRef.current = records;
@@ -8351,7 +8422,7 @@ function FabryTracker() {
         <div key={`${tab}-${dropId}`} className={dropping ? "" : "fx-fade"}>
 
         {tab === "trends" && (
-          <div className={dropping ? "fx-cascade" : ""}>
+          <div ref={trendsRef} className={dropping ? "fx-cascade" : ""}>
             {backupNudge.show && !tourOn && (
               <section className="p-4 mb-4 rounded-lg" data-backup-nudge aria-labelledby="keep-safe"
                 style={{ background: C.surface, border: `1px solid ${C.line}` }}>
@@ -8489,6 +8560,12 @@ function FabryTracker() {
                 </div>
               </div>
             )}
+            {pdfBusy && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-6" role="status" aria-live="polite"
+                style={{ background: C.bg }}>
+                <p className="text-xl font-bold" style={{ color: C.ink }}>Making your PDF…</p>
+              </div>
+            )}
             {(() => {
               // A condition's one-time findings (like HNF1B's abdominal imaging) get their own section, after the one named
               // in `after` (or at the end).
@@ -8520,7 +8597,7 @@ function FabryTracker() {
                     onClick={() => setCollapsed((x) => ({ ...x, [c.id]: isOpen }))} aria-expanded={isOpen}
                     className="fx-press w-full flex items-center justify-between px-3 py-3 mb-2 rounded-md text-left focus:outline-none focus:ring-2"
                     style={{ background: C.chip, borderLeft: `4px solid ${C.accent}` }}>
-                    <span className="text-lg font-bold" style={{ color: C.ink }}>{c.label}</span>
+                    <span className="text-lg font-bold" data-pdf-heading style={{ color: C.ink }}>{c.label}</span>
                     <span className="text-lg" aria-hidden="true" style={{ color: C.muted }}>{isOpen ? "▾" : "▸"}</span>
                   </button>
                   {isOpen && (
@@ -9223,13 +9300,31 @@ function FabryTracker() {
             <div className="flex flex-wrap gap-2 mb-2">
               <Button onClick={() => { setExported(null); setExportAsk("backup"); }}>Export backup (JSON)</Button>
               <Button kind="secondary" onClick={() => { setExported(null); setExportAsk("csv"); }}>Export spreadsheet (CSV)</Button>
+              <Button kind="secondary" onClick={() => { setExported(null); setExportAsk("pdf"); }} disabled={pdfBusy || !data.entries.length}>
+                Export charts (PDF)
+              </Button>
             </div>
+            <p className="text-sm mb-3" style={{ color: C.muted }}>A PDF of your charts is easiest to print or bring to appointments.</p>
             <p className="text-sm mb-3" data-last-backup style={{ color: C.muted }}>
               {backupDates[activeId] ? `Last backup: ${fmtDate(toT(backupDates[activeId]))}.` : "No backup yet."}
             </p>
             </div>
             {exportAsk === "backup" && (
               <BackupOptions onExport={(pw) => exportData("json", pw)} onCancel={() => setExportAsk("")} />
+            )}
+            {exportAsk === "pdf" && (
+              <div className="fx-fade p-3 mb-4 rounded-md" role="group" aria-label="PDF warning"
+                style={{ background: C.subtle, border: `2px solid ${C.error}` }}>
+                <p className="text-sm font-bold mb-1" style={{ color: C.error }}>PDF files can't be locked</p>
+                <p className="text-sm mb-3">
+                  Anyone who gets this file can read the health information in it. Only send it to people you trust, like
+                  your care team, and delete it from your phone or computer when you're done.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button onClick={saveTrendsPdf}>Save PDF</Button>
+                  <Button kind="secondary" onClick={() => setExportAsk("")}>Cancel</Button>
+                </div>
+              </div>
             )}
             {exportAsk === "csv" && (
               <div className="fx-fade p-3 mb-4 rounded-md" role="group" aria-label="Spreadsheet warning"

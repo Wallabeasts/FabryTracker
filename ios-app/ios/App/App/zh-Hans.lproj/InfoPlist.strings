@@ -1,0 +1,5 @@
+/* My Rare Disease Tracker: name and permission messages in this language */
+"CFBundleDisplayName" = "My RDT";
+"NSFaceIDUsageDescription" = "使用面容 ID 打开您的健康记录，无需输入密码。您的面部数据保留在您的 iPhone 上。";
+"NSHealthShareUsageDescription" = "如果您选择连接 Apple“健康”，App 会读取您的血压、静息心率、体重和身高，并添加到此 iPhone 上的记录中。不会发送给我们或任何其他人。";
+"NSHealthUpdateUsageDescription" = "My Rare Disease Tracker 只读取 Apple“健康”中的数据，绝不会写入、更改或删除“健康”中的任何内容。";
