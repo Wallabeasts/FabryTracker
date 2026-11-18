@@ -3069,5 +3069,7 @@
   "{0} is locked after too many tries. Unlock your iPhone with its passcode, then come back here.",
   "To log in with {0}, first set it up in your iPhone's Settings app, under {1} & Passcode.",
   "Save",
-  "Turn the crown or tap − and +"
+  "Turn the crown or tap − and +",
+  "Sent to iPhone",
+  "Waiting for iPhone"
 ]

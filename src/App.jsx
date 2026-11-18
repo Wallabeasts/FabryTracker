@@ -2657,6 +2657,7 @@ const WATCH_UI = {
   speak: "Speak", send: "Send", again: "Try again", youSaid: "You said",
   checkOnPhone: "You'll check it on your iPhone before it's saved.", recent: "Recent", byVoice: "By voice",
   outOf10: "out of 10", save: "Save", turnCrown: "Turn the crown or tap − and +",
+  sentPhone: "Sent to iPhone", waitPhone: "Waiting for iPhone",
 };
 function watchConfig(cond, person, family) {
   return {

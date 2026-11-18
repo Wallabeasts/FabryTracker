@@ -130,9 +130,17 @@ struct ContentView: View {
                         if !store.recent.isEmpty {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(store.t("recent", "Recent")).font(.caption2.bold()).foregroundStyle(Brand.cyan)
-                                ForEach(Array(store.recent.enumerated()), id: \.offset) { _, line in
-                                    Text(line).font(.caption2).foregroundStyle(.white.opacity(0.75)).lineLimit(2)
+                                ForEach(store.recent) { item in
+                                    HStack(alignment: .top, spacing: 5) {
+                                        Image(systemName: item.sent ? "checkmark.circle.fill" : "clock.fill")
+                                            .font(.caption2).foregroundStyle(item.sent ? .green : .orange)
+                                        Text(item.text).font(.caption2).foregroundStyle(.white.opacity(0.8)).lineLimit(2)
+                                    }
+                                    .accessibilityElement(children: .combine)
+                                    .accessibilityLabel("\(item.text), \(item.sent ? store.t("sentPhone", "Sent to iPhone") : store.t("waitPhone", "Waiting for iPhone"))")
                                 }
+                                Text(store.recent.contains { !$0.sent } ? store.t("waitPhone", "Waiting for iPhone") : store.t("sentPhone", "Sent to iPhone"))
+                                    .font(.system(size: 10)).foregroundStyle(.white.opacity(0.55))
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.top, 6)

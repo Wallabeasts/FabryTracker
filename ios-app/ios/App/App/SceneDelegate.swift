@@ -265,12 +265,22 @@ final class WatchLink: NSObject, WCSessionDelegate {
     private func savedConfig() -> String? {
         return queue.sync { lastConfig } ?? UserDefaults.standard.string(forKey: "mrdt-watch-config")
     }
+    // The phone's side of the shared "context": the watch's buttons, plus receipts ("ack") for the entries that
+    // arrived here, so the watch can mark them sent and stop resending them.
     private func sendConfig() {
-        guard WCSession.isSupported(), let json = savedConfig() else { return }
+        guard WCSession.isSupported() else { return }
         let s = WCSession.default
-        guard s.activationState == .activated, s.isPaired, s.isWatchAppInstalled else { return }
-        try? s.updateApplicationContext(["config": json])
+        guard s.activationState == .activated, s.isPaired, s.isWatchAppInstalled else {
+            print("[MRDT watch] phone: not sending to watch (activated \(s.activationState == .activated), paired \(s.isPaired), installed \(s.isWatchAppInstalled))")
+            return
+        }
+        var ctx: [String: Any] = ["ack": seenIds().suffix(100).map { $0 }]
+        if let json = savedConfig() { ctx["config"] = json }
+        do { try s.updateApplicationContext(ctx) } catch { print("[MRDT watch] phone: context error \(error)") }
     }
+
+    // Ids of entries already received, so one sent two ways (or twice) is only added once.
+    private func seenIds() -> [String] { UserDefaults.standard.stringArray(forKey: "mrdt-watch-seen") ?? [] }
 
     // ---- Entries waiting for the app ----
     func readPending() -> [[String: Any]] {
@@ -307,34 +317,54 @@ final class WatchLink: NSObject, WCSessionDelegate {
         }
         if let v = item["value"] as? NSNumber { clean["value"] = v }
         if let t = item["text"] as? String { clean["text"] = String(t.prefix(600)) }
-        queue.sync {
+        let isNew: Bool = queue.sync {
+            var seen = self.seenIds()
+            if seen.contains(id) { return false }
+            seen.append(id)
+            UserDefaults.standard.set(Array(seen.suffix(300)), forKey: "mrdt-watch-seen")
             var list = self.load()
-            if list.contains(where: { ($0["id"] as? String) == id }) { return }
             list.append(clean)
             self.save(Array(list.suffix(500)))
+            return true
         }
+        print("[MRDT watch] phone: received \(kind) \(id.prefix(8)) \(isNew ? "(new)" : "(already had it)")")
         // Tell the app's page, so a tap shows up right away when the app is open.
-        DispatchQueue.main.async { NotificationCenter.default.post(name: WatchLink.arrived, object: nil) }
+        if isNew { DispatchQueue.main.async { NotificationCenter.default.post(name: WatchLink.arrived, object: nil) } }
     }
     static let arrived = Notification.Name("MRDTWatchEntryArrived")
 
     // ---- WCSessionDelegate ----
     func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
+        print("[MRDT watch] phone: link ready (\(activationState.rawValue)), paired \(session.isPaired), watch app installed \(session.isWatchAppInstalled)")
+        // Entries the watch left in its context while this app was closed.
+        receiveOutbox(session.receivedApplicationContext)
+        sendConfig()
+    }
+    // The watch keeps everything not yet confirmed in its context ("outbox"), which reaches the phone even when
+    // direct messages can't. Then the phone confirms with its "ack" list.
+    private func receiveOutbox(_ ctx: [String: Any]) {
+        guard let json = ctx["outbox"] as? String, let data = json.data(using: .utf8),
+              let list = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return }
+        list.forEach { add($0) }
+    }
+    func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
+        receiveOutbox(applicationContext)
         sendConfig()
     }
     func sessionDidBecomeInactive(_ session: WCSession) {}
     func sessionDidDeactivate(_ session: WCSession) { session.activate() }
     func sessionWatchStateDidChange(_ session: WCSession) { sendConfig() }
-    func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) { add(userInfo) }
+    func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) { add(userInfo); sendConfig() }
     // Sent directly while the watch and phone are in reach: an entry, or the watch asking for its buttons.
     func session(_ session: WCSession, didReceiveMessageData messageData: Data, replyHandler: @escaping (Data) -> Void) {
         guard let obj = try? JSONSerialization.jsonObject(with: messageData) as? [String: Any] else { replyHandler(Data()); return }
         if obj["want"] as? String == "config" { replyHandler(Data((savedConfig() ?? "").utf8)); return }
         add(obj)
         replyHandler(Data("ok".utf8))
+        sendConfig()
     }
     func session(_ session: WCSession, didReceiveMessageData messageData: Data) {
-        if let obj = try? JSONSerialization.jsonObject(with: messageData) as? [String: Any] { add(obj) }
+        if let obj = try? JSONSerialization.jsonObject(with: messageData) as? [String: Any] { add(obj); sendConfig() }
     }
 }
 
