@@ -9,6 +9,7 @@ import {
 import { checkPassword } from "./passwords.js";
 import { NATIVE_APP, IOS_APP, saveFileInApp, healthAvailable, healthConnect, healthRead, watchStatus, watchSetup, watchPending, watchClear, nativeBioReason, nativeBioDevice, PORTAL_REDIRECT, nativePortalSignIn, nativeHttp, saveBinaryInApp, ANDROID_APP, portalKeyPublic, portalKeySign, portalKeyRemove } from "./native.js";
 import { makeTrendsPdf } from "./trendsPdf.js";
+import { mapVitals, mapMedications, planMedImport } from "./recordImport.js";
 import { makeVoiceParser } from "./voice.js";
 import { labInfo } from "./labInfo.js";
 import { ALERT_EVERY_DAYS, alertDue, cleanWatch, countryName, countryOptions, fetchEnrolling, matchTrials } from "./trialAlerts.js";
@@ -2857,7 +2858,7 @@ const EPIC = {
   // Non-production client ID from fhir.epic.com while testing, production client ID when live.
   // Empty means the connection isn't switched on yet: patients can read the steps but can't sign in.
   clientId: "4e67c358-b85d-4cbe-986f-1d755a4a51cf", // Non-Production (Epic sandbox) client ID of the "My Rare Disease Tracker" registration (appId 65257). Production ID: eeef3b2a-1c70-420f-b6ee-ba2d70b1a2be
-  scope: "launch/patient openid fhirUser patient/Patient.read patient/Observation.read",
+  scope: "launch/patient openid fhirUser patient/Patient.read patient/Observation.read patient/MedicationRequest.read",
 };
 // Health systems patients can choose. Add production systems from Epic's published list of patient-access
 // endpoints. build.mjs allows the page to contact each fhirBase listed here.
@@ -3094,17 +3095,30 @@ async function downloadRecord(system, accessToken, patientId) {
   const origin = new URL(base).origin;
   const get = (url) => fetchJSON(url, { headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/fhir+json" } }, system.name);
   const patient = await get(`${base}Patient/${encodeURIComponent(patientId)}`);
-  const observations = [];
-  let url = `${base}Observation?patient=${encodeURIComponent(patientId)}&category=laboratory&_count=200`;
-  for (let page = 0; url && page < 20; page++) {
-    const bundle = await get(url);
-    (bundle.entry || []).forEach((e) => { if (e.resource && e.resource.resourceType === "Observation") observations.push(e.resource); });
-    const next = (bundle.link || []).find((l) => l.relation === "next");
-    // Only follow "next page" links on the same server, so the access token never goes anywhere else.
-    url = next && isWebLink(next.url) && new URL(next.url).origin === origin ? next.url : null;
-  }
+  const searchAll = async (first, type) => {
+    const found = [];
+    let url = first;
+    for (let page = 0; url && page < 20; page++) {
+      const bundle = await get(url);
+      (bundle.entry || []).forEach((e) => { if (e.resource && e.resource.resourceType === type) found.push(e.resource); });
+      const next = (bundle.link || []).find((l) => l.relation === "next");
+      // Only follow "next page" links on the same server, so the access token never goes anywhere else.
+      url = next && isWebLink(next.url) && new URL(next.url).origin === origin ? next.url : null;
+    }
+    return found;
+  };
+  const pid = encodeURIComponent(patientId);
+  const observations = await searchAll(`${base}Observation?patient=${pid}&category=laboratory&_count=200`, "Observation");
+  // Vital signs and medicines are extras: if a health system doesn't share them, the lab results still come in.
+  const vitalObs = await searchAll(`${base}Observation?patient=${pid}&category=vital-signs&_count=200`, "Observation").catch(() => []);
+  const medRequests = (await searchAll(`${base}MedicationRequest?patient=${pid}&_count=200`, "MedicationRequest").catch(() => []))
+    .map((m) => ({ resourceType: m.resourceType, id: m.id, status: m.status, authoredOn: m.authoredOn,
+      medicationCodeableConcept: m.medicationCodeableConcept, medicationReference: m.medicationReference,
+      dosageInstruction: (m.dosageInstruction || []).slice(0, 1), dispenseRequest: m.dispenseRequest }));
   const name = (patient.name || [])[0] || {};
-  const { entries, skipped } = mapObservations(observations);
+  const labs = mapObservations(observations);
+  const entries = [...labs.entries, ...mapVitals(vitalObs)];
+  const skipped = labs.skipped;
   return {
     systemName: system.name,
     patientName: name.text || [...(name.given || []), name.family].filter(Boolean).join(" "),
@@ -3112,10 +3126,47 @@ async function downloadRecord(system, accessToken, patientId) {
       birthDate: /^\d{4}-\d{2}-\d{2}$/.test(patient.birthDate || "") ? patient.birthDate : "",
       sex: patient.gender === "female" ? "Female" : patient.gender === "male" ? "Male" : "",
     },
-    totalLabs: observations.length,
+    totalLabs: observations.length + vitalObs.length,
     entries,
     skipped,
+    medRequests,
   };
+}
+
+// The results and treatments from a record that are new for this person. Vital signs are skipped on days that already
+// have that measure (typed by hand or from Apple Health); treatments are matched to this condition's list.
+const VITAL_IDS = new Set(["sbp", "dbp", "hr", "weight", "heightCm"]);
+const CLASS_MEDS = new Set(["acei", "arb", "sglt2", "statin", "opioid", "glp1", "insulin", "sulfonylurea", "bisphosphonate", "fibrate", "heartFailure"]);
+function newFromRecord(r, rec, cond) {
+  const entries = rec.entries || [];
+  const haveIds = new Set(entries.map((e) => e.fhirId).filter(Boolean));
+  const haveDays = new Set(entries.flatMap((e) => [...VITAL_IDS].filter((k) => hasVal(e[k])).map((k) => `${e.date}|${k}`)));
+  const allowed = condMetricIds(cond);
+  const fresh = r.entries.filter((e) => !haveIds.has(e.fhirId) && allowed.has(e.metric)
+    && !(VITAL_IDS.has(e.metric) && haveDays.has(`${e.date}|${e.metric}`)));
+  const already = r.entries.filter((e) => haveIds.has(e.fhirId)).length;
+  const meds = planMedImport(rec.meds || [], mapMedications(r.medRequests || [], new Set(cond.meds)));
+  // Updates that only record new order numbers are saved quietly; `changed` counts those with a new dose.
+  meds.changed = meds.updates.filter((u) => u.doses.length).length;
+  return { fresh, already, meds };
+}
+
+// Saved-treatment changes from planMedImport, applied to a record's list of treatments.
+function applyMedPlan(meds, plan, addedIds) {
+  // Statins and SGLT2 inhibitors keep the drug's name separately; other drug classes show it with the dose,
+  // like "Lisinopril 10 mg", as the Treatments form does.
+  const named = (f, dose) => (["statin", "sglt2"].includes(f.med) || !CLASS_MEDS.has(f.med) ? dose : nameWithDose(f.generic, dose));
+  const updated = meds.map((m) => {
+    const u = plan.updates.find((x) => x.id === m.id);
+    if (!u) return m;
+    return { ...m, fhirIds: u.fhirIds, doses: [...(m.doses || []), ...u.doses.map((d) => ({ id: uid(), date: d.date, dose: named(u, d.dose) }))] };
+  });
+  const added = plan.add.map((f, i) => ({
+    id: addedIds[i], med: f.med, start: f.start, stop: "", startDose: named(f, f.startDose),
+    ...(["statin", "sglt2"].includes(f.med) ? { customName: f.generic } : {}),
+    doses: f.doses.map((d) => ({ id: uid(), date: d.date, dose: named(f, d.dose) })), fhirIds: f.fhirIds, source: "record",
+  }));
+  return [...updated, ...added];
 }
 
 // ---------- Automatic updates (iPhone app) ----------
@@ -3236,7 +3287,7 @@ function StepList({ items }) {
 }
 
 // Walks a patient through connecting their MyChart account, one screen at a time.
-function ConnectWizard({ connect, setConnect, region, units, profile, personName, metricIds, existingFhirIds, onImport, onLink, onUnlink, onClose, onSeeCharts }) {
+function ConnectWizard({ connect, setConnect, region, units, profile, personName, record, cond, onImport, onLink, onUnlink, onClose, onSeeCharts }) {
   const [systemId, setSystemId] = useState(HEALTH_SYSTEMS.length === 1 ? HEALTH_SYSTEMS[0].id : "");
   const [search, setSearch] = useState("");
   const [useProfile, setUseProfile] = useState(true);
@@ -3381,9 +3432,8 @@ function ConnectWizard({ connect, setConnect, region, units, profile, personName
     );
   } else if (stage === "review") {
     const r = connect.result;
-    // Only the tests this condition tracks are offered.
-    const fresh = r.entries.filter((e) => !existingFhirIds.has(e.fhirId) && (!metricIds || metricIds.has(e.metric)));
-    const already = r.entries.filter((e) => existingFhirIds.has(e.fhirId)).length;
+    // Only the tests and treatments this condition tracks are offered.
+    const { fresh, already, meds } = newFromRecord(r, record, cond);
     const byMetric = {};
     fresh.forEach((e) => { (byMetric[e.metric] = byMetric[e.metric] || []).push(e); });
     const needProfile = (r.profile.birthDate && r.profile.birthDate !== profile.birthDate) || (r.profile.sex && r.profile.sex !== profile.sex);
@@ -3391,7 +3441,7 @@ function ConnectWizard({ connect, setConnect, region, units, profile, personName
       <>
         <h2 className="text-2xl font-bold mb-1">Here's what we found</h2>
         <p className="text-base mb-4" style={{ color: C.muted }}>
-          From {r.systemName}{r.patientName ? ` for ${r.patientName}` : ""}. {r.totalLabs} lab results were checked.
+          From {r.systemName}{r.patientName ? ` for ${r.patientName}` : ""}. {r.totalLabs} results were checked.
         </p>
         {fresh.length > 0 ? (
           <ul className="mb-3 rounded-lg" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
@@ -3411,10 +3461,33 @@ function ConnectWizard({ connect, setConnect, region, units, profile, personName
               );
             })}
           </ul>
-        ) : (
+        ) : !meds.add.length && !meds.changed ? (
           <p className="text-base mb-3 p-3 rounded-md" style={{ background: C.subtle }}>
             {`No new results for ${APP_INFO.name}'s charts were found.`}
           </p>
+        ) : null}
+        {(meds.add.length > 0 || meds.changed > 0) && (
+          <>
+            <h3 className="text-base font-bold mb-1">Treatments</h3>
+            <ul className="mb-3 rounded-lg" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
+              {meds.add.map((f, k) => (
+                <li key={f.fhirIds[0]} className="px-4 py-3 text-base" style={{ borderTop: k ? `1px solid ${C.line}` : "none" }}>
+                  <span className="font-bold">{medInfo({ id: f.fhirIds[0], med: f.med, customName: f.generic }).name}</span>
+                  <span className="block text-sm" style={{ color: C.muted }}>
+                    {`${CLASS_MEDS.has(f.med) && !["statin", "sglt2"].includes(f.med) ? `${f.generic}, ` : ""}started ${fmtDate(toT(f.start))}${f.doses.length ? `, ${f.doses.length} dose ${f.doses.length === 1 ? "change" : "changes"}` : ""}`}
+                  </span>
+                </li>
+              ))}
+              {meds.changed > 0 && (
+                <li className="px-4 py-3 text-sm" style={{ borderTop: meds.add.length ? `1px solid ${C.line}` : "none", color: C.muted }}>
+                  {`New dose information for ${meds.changed} ${meds.changed === 1 ? "treatment" : "treatments"} you already have.`}
+                </li>
+              )}
+            </ul>
+            <p className="text-sm mb-3" style={{ color: C.muted }}>
+              Only the medicines on this app's treatment list are added. Other medicines in your record are left out.
+            </p>
+          </>
         )}
         {already > 0 && <p className="text-sm mb-1" style={{ color: C.muted }}>{already} results were already added before and will be skipped.</p>}
         {r.link && (
@@ -3443,13 +3516,17 @@ function ConnectWizard({ connect, setConnect, region, units, profile, personName
           </label>
         )}
         <div className="flex flex-wrap gap-2 mt-5">
-          {fresh.length > 0 || (needProfile && useProfile) ? (
+          {fresh.length > 0 || meds.add.length > 0 || meds.changed > 0 || (needProfile && useProfile) ? (
             <>
               <Button onClick={() => {
-                const n = onImport(fresh, needProfile && useProfile ? r.profile : null, r.systemName);
+                const n = onImport(fresh, needProfile && useProfile ? r.profile : null, r.systemName, meds);
                 setConnect({ stage: "done", added: n, systemName: r.systemName, linked: Boolean(r.link) });
               }}>
-                {fresh.length ? `Add ${fresh.length} results` : "Update my profile"}
+                {fresh.length || meds.add.length || meds.changed
+                  ? `Add ${[fresh.length ? `${fresh.length} ${fresh.length === 1 ? "result" : "results"}` : "",
+                    meds.add.length ? `${meds.add.length} ${meds.add.length === 1 ? "treatment" : "treatments"}` : "",
+                    !meds.add.length && meds.changed ? "dose changes" : ""].filter(Boolean).join(" and ")}`
+                  : "Update my profile"}
               </Button>
               <Button kind="secondary" onClick={() => { if (r.link && onUnlink) onUnlink(r.link); onClose(); }}>Don't add</Button>
             </>
@@ -3464,7 +3541,7 @@ function ConnectWizard({ connect, setConnect, region, units, profile, personName
       <>
         <h2 className="text-2xl font-bold mb-2">All set</h2>
         <p className="text-base mb-4">
-          {connect.added ? `${connect.added} results from ${connect.systemName} are now on your charts.` : "Your profile was updated."}
+          {connect.added ? `${connect.added} new items from ${connect.systemName} are now in your record and on your charts.` : "Your profile was updated."}
         </p>
         <section className="p-4 mb-4 rounded-lg" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
           <h3 className="text-base font-bold mb-1">Getting new results later</h3>
@@ -7473,25 +7550,31 @@ function FabryTracker() {
   };
 
   // Adds results downloaded from a health record. Returns how many were added.
-  const importRecord = (fresh, recordProfile, systemName) => {
+  const importRecord = (fresh, recordProfile, systemName, medPlan) => {
     const added = fresh.map((e) => ({ id: uid(), date: e.date, [e.metric]: e.value, fhirId: e.fhirId, source: "record" }));
     const ids = new Set(added.map((a) => a.id));
+    const plan = medPlan || { add: [], updates: [] };
+    const medIds = plan.add.map(() => uid());
+    const beforeMeds = data.meds;
     setData((d) => ({
       ...d,
       onboarded: true,
       entries: [...d.entries, ...added],
+      meds: plan.add.length || (plan.updates || []).length ? applyMedPlan(d.meds, plan, medIds) : d.meds,
       profile: recordProfile
         ? { ...d.profile, birthDate: recordProfile.birthDate || d.profile.birthDate, sex: recordProfile.sex || d.profile.sex }
         : d.profile,
       lastImport: { date: today(), source: systemName, count: added.length },
     }));
-    if (added.length) {
+    const medCount = plan.add.length + (plan.changed || 0);
+    if (added.length || medCount) {
       setToast({
-        text: `${added.length} results added from ${systemName}`,
-        undo: () => setData((d) => ({ ...d, entries: d.entries.filter((e) => !ids.has(e.id)) })),
+        text: [added.length ? `${added.length} results` : "", medCount ? `${medCount} treatments` : ""].filter(Boolean).join(" and ")
+          + ` added from ${systemName}`,
+        undo: () => setData((d) => ({ ...d, entries: d.entries.filter((e) => !ids.has(e.id)), meds: medCount ? beforeMeds : d.meds })),
       });
     }
-    return added.length;
+    return added.length + medCount;
   };
 
   // Automatic updates from a health system (iPhone app; see registerAutoUpdate). One link per health system per person.
@@ -7529,10 +7612,11 @@ function FabryTracker() {
             const r = await autoUpdateRecord(link);
             const cur = recordsRef.current[pid];
             if (!cur) continue;
-            const allowed = condMetricIds(condOf(cur));
-            const have = new Set((cur.entries || []).map((e) => e.fhirId).filter(Boolean));
-            const added = r.entries.filter((e) => !have.has(e.fhirId) && allowed.has(e.metric))
-              .map((e) => ({ id: uid(), date: e.date, [e.metric]: e.value, fhirId: e.fhirId, source: "record" }));
+            const { fresh, meds: plan } = newFromRecord(r, cur, condOf(cur));
+            const added = fresh.map((e) => ({ id: uid(), date: e.date, [e.metric]: e.value, fhirId: e.fhirId, source: "record" }));
+            const medCount = plan.add.length + plan.changed;
+            const medIds = plan.add.map(() => uid());
+            const beforeMeds = cur.meds || [];
             setRecords((rs) => {
               const x = rs[pid];
               if (!x) return rs;
@@ -7540,14 +7624,19 @@ function FabryTracker() {
               const add = added.filter((a) => !haveNow.has(a.fhirId));
               return { ...rs, [pid]: { ...x,
                 entries: add.length ? [...(x.entries || []), ...add] : x.entries,
+                meds: (plan.add.length || plan.updates.length) && x.meds === beforeMeds ? applyMedPlan(x.meds || [], plan, medIds) : x.meds,
                 portalLinks: (x.portalLinks || []).map((l) => (l.tag === link.tag && l.lastCheck !== today() ? { ...l, lastCheck: today() } : l)),
                 lastImport: add.length ? { date: today(), source: link.systemName, count: add.length } : x.lastImport } };
             });
-            if (added.length) {
+            if (added.length || medCount) {
               const ids = new Set(added.map((a) => a.id));
+              const parts = [added.length ? `${added.length} new ${added.length === 1 ? "result" : "results"}` : "",
+                medCount ? `${medCount} ${medCount === 1 ? "treatment update" : "treatment updates"}` : ""].filter(Boolean);
               setToast({
-                text: added.length === 1 ? `1 new result added from ${link.systemName}` : `${added.length} new results added from ${link.systemName}`,
-                undo: () => setRecords((rs) => (rs[pid] ? { ...rs, [pid]: { ...rs[pid], entries: rs[pid].entries.filter((e) => !ids.has(e.id)) } } : rs)),
+                text: `${parts.join(" and ")} added from ${link.systemName}`,
+                undo: () => setRecords((rs) => (rs[pid] ? { ...rs, [pid]: { ...rs[pid],
+                  entries: rs[pid].entries.filter((e) => !ids.has(e.id)),
+                  meds: medCount ? beforeMeds : rs[pid].meds } } : rs)),
               });
             }
           } catch (e) {
@@ -9684,8 +9773,7 @@ function FabryTracker() {
       {connect && (
         <ConnectWizard connect={connect} setConnect={setConnect} region={region} units={units} profile={data.profile}
           personName={family ? (activePerson.id === SELF ? "your" : `${personLabel(activePerson)}'s`) : ""}
-          metricIds={condMetricIds(cond)}
-          existingFhirIds={new Set(data.entries.map((e) => e.fhirId).filter(Boolean))} onImport={importRecord}
+          record={data} cond={cond} onImport={importRecord}
           onLink={linkPortal} onUnlink={unlinkPortal}
           onClose={() => setConnect(null)} onSeeCharts={() => { setConnect(null); setTab("trends"); }} />
       )}
