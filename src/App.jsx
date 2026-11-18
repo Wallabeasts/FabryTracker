@@ -3067,9 +3067,11 @@ async function finishSignIn(fromApp) {
   // In the iPhone app, also set up automatic updates (see registerAutoUpdate). If that isn't possible, the sign-in
   // still works as before and the patient signs in again next time.
   let link = null;
+  let linkError = "";
   let accessToken = token.access_token;
   if (IOS_APP && saved.registerEndpoint) {
-    link = await registerAutoUpdate(system, token, saved.tokenEndpoint, saved.registerEndpoint).catch(() => null);
+    link = await registerAutoUpdate(system, token, saved.tokenEndpoint, saved.registerEndpoint)
+      .catch((e) => { linkError = (e && e.message) || "unknown problem"; return null; });
     if (link) {
       // The first pass may only be good for setting this up, so the results are read with a new one.
       const fresh = await autoUpdateToken(link).catch(() => null);
@@ -3083,7 +3085,7 @@ async function finishSignIn(fromApp) {
     if (accessToken === token.access_token) throw e;
     result = await downloadRecord(system, token.access_token, token.patient);
   }
-  return { ...result, link };
+  return { ...result, link, linkError };
 }
 
 // Reads the patient's details and lab results with an access token. Nothing is saved here.
@@ -3129,13 +3131,23 @@ async function registerAutoUpdate(system, token, tokenEndpoint, registerEndpoint
   const tag = randomString(24);
   try {
     const jwk = await portalKeyPublic(tag);
-    if (!jwk || !jwk.n || !jwk.e) throw new Error("no key");
-    const reg = await fetchJSON(registerEndpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json", Authorization: `Bearer ${token.access_token}` },
-      body: JSON.stringify({ software_id: epicClientId(), jwks: { keys: [{ kty: "RSA", n: jwk.n, e: jwk.e }] } }),
-    }, system.name);
-    if (!reg || !reg.client_id) throw new Error("not registered");
+    if (!jwk || !jwk.n || !jwk.e) throw new Error("this phone couldn't make a key");
+    let res;
+    try {
+      res = await nativeHttp(registerEndpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json", Authorization: `Bearer ${token.access_token}` },
+        body: JSON.stringify({ software_id: epicClientId(), jwks: { keys: [{ kty: "RSA", n: jwk.n, e: jwk.e }] } }),
+      });
+    } catch (e) {
+      throw new Error(`${system.name} couldn't be reached`);
+    }
+    let reg = null;
+    try { reg = JSON.parse(res.text); } catch (e) { reg = null; }
+    if (res.status < 200 || res.status >= 300 || !reg || !reg.client_id) {
+      const why = (reg && (reg.error_description || reg.error)) || (res.text || "").slice(0, 80);
+      throw new Error(`${system.name} answered ${res.status}${why ? `: ${why}` : ""}`);
+    }
     return { systemId: system.id, systemName: system.name, clientId: String(reg.client_id), tokenEndpoint, tag,
       patient: String(token.patient), since: today(), lastCheck: today() };
   } catch (e) {
@@ -3408,6 +3420,11 @@ function ConnectWizard({ connect, setConnect, region, units, profile, personName
         {r.link && (
           <p className="text-sm mb-1" style={{ color: C.muted }}>
             {`New results will be added by themselves each time you open ${APP_INFO.name}, for as long as you allowed in MyChart.`}
+          </p>
+        )}
+        {!r.link && r.linkError && (
+          <p className="text-sm mb-1" style={{ color: C.muted }}>
+            {`Automatic updates couldn't be turned on this time (${r.linkError}). Your results can still be added now; next time, sign in again to get new ones.`}
           </p>
         )}
         {r.skipped.length > 0 && (
