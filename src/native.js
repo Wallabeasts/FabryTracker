@@ -272,3 +272,22 @@ export function nativeHttp(url, { method = "GET", headers = {}, body = "" } = {}
     try { b.request(id, url, method, JSON.stringify(headers), body); } catch (e) { httpWaiting.delete(id); reject(new Error("unavailable")); }
   });
 }
+
+// Saves a binary file (like a PDF) made in the app: Downloads on Android, the share sheet on iPhone.
+// Returns false outside the apps (the website downloads it instead), or when an older Android app can't.
+export async function saveBinaryInApp(bytes, filename, mime) {
+  if (ANDROID_APP && window.AndroidExport && typeof window.AndroidExport.saveBase64 === "function") {
+    let bin = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    window.AndroidExport.saveBase64(btoa(bin), filename, mime);
+    return true;
+  }
+  if (IOS_APP && typeof File !== "undefined" && navigator.canShare) {
+    const file = new File([bytes], filename, { type: mime });
+    if (navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: filename }); } catch (e) { /* closed */ }
+      return true;
+    }
+  }
+  return false;
+}
