@@ -10,6 +10,8 @@ struct WatchConfig: Codable, Equatable {
         var label: String
         var prompt: String
         var min: Int
+        var rgb: String?   // the score's color on the phone, like "15,110,120"
+        var high: Bool?    // true when a higher number is better (quality of life)
     }
     struct EventType: Codable, Equatable, Identifiable {
         var id: String
@@ -37,6 +39,8 @@ final class WatchStore: NSObject, @preconcurrency WCSessionDelegate {
     var config: WatchConfig?
     // What was logged since the app opened, newest first. Kept only in memory: health details aren't saved on the watch.
     var recent: [String] = []
+    // What was last logged for each button since the app opened (shown on the button). In memory only.
+    var last: [String: String] = [:]
 
     @ObservationIgnored private let configKey = "mrdt-watch-config"
     @ObservationIgnored private var waiting: [[String: Any]] = []
@@ -124,10 +128,12 @@ final class WatchStore: NSObject, @preconcurrency WCSessionDelegate {
 
     func logScore(_ score: WatchConfig.Score, _ value: Int) {
         send(["kind": "score", "metric": score.id, "value": value], recentText: "\(score.label) \(value)/10")
+        last[score.id] = "\(value)/10"
     }
 
-    func logEvent(_ type: WatchConfig.EventType) {
+    func logEvent(_ type: WatchConfig.EventType, group: String) {
         send(["kind": "event", "type": type.id], recentText: type.label)
+        last[group] = type.label
     }
 
     // Spoken words are sent as they were heard. The phone works out what they mean and shows the patient

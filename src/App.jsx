@@ -2656,13 +2656,15 @@ const WATCH_UI = {
   medHint: "Say the medicine's name, and whether you started it, stopped it or changed the dose.",
   speak: "Speak", send: "Send", again: "Try again", youSaid: "You said",
   checkOnPhone: "You'll check it on your iPhone before it's saved.", recent: "Recent", byVoice: "By voice",
-  outOf10: "out of 10",
+  outOf10: "out of 10", save: "Save", turnCrown: "Turn the crown or tap − and +",
 };
 function watchConfig(cond, person, family) {
   return {
     v: 1, person: person.id, who: family ? String(person.name || "") : "", disease: tr(cond.name),
     scores: quickScores(cond).map((r) => ({ id: r.id, label: tr(r.name || (metricById(r.id) || {}).short || r.id).replace(/^\p{Ll}/u, (c) => c.toUpperCase()),
-      prompt: tr(r.prompt || ""), min: r.min === 0 ? 0 : 1 })),
+      prompt: tr(r.prompt || ""), min: r.min === 0 ? 0 : 1,
+      // The score's color on the phone's charts, and whether a higher number is better (quality of life).
+      rgb: r.rgb || "15,110,120", high: /\(best\)\s*$/i.test(r.prompt || "") })),
     groups: condEventGroups(cond).map((g) => ({ title: tr(g.title), types: g.list.map((t) => ({ id: t.id, label: tr(t.label) })) })),
     ui: Object.fromEntries(Object.entries(WATCH_UI).map(([k, v]) => [k, tr(v)])),
   };

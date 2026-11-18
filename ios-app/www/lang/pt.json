@@ -3067,5 +3067,7 @@
   "Começar com um registro vazio",
   "{0} está desativado para este app. Para usar, abra o app Ajustes do iPhone, toque em {1} e Código, depois em Outros Apps, e ative o My RDT.",
   "{0} está bloqueado após muitas tentativas. Desbloqueie o iPhone com o código e volte aqui.",
-  "Para entrar com {0}, primeiro configure no app Ajustes do iPhone, em {1} e Código."
+  "Para entrar com {0}, primeiro configure no app Ajustes do iPhone, em {1} e Código.",
+  "Salvar",
+  "Gire a coroa ou toque em − e +"
 ]

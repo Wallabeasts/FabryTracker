@@ -12,7 +12,8 @@ as they are.
 5. Drag `MRDTWatchApp.swift`, `WatchStore.swift` and `ContentView.swift` from this folder into that **MRDT Watch Watch App**
    folder in Xcode. When asked, tick **Copy items if needed** and only the **MRDT Watch Watch App** target.
 6. App icon: in the watch folder, open Assets > AppIcon and drag in `WatchIcon-1024.png` from this folder (the zebra
-   ribbon without the words, which are too small to read on a watch).
+   ribbon without the words, which are too small to read on a watch). Then drag `RibbonMark.png` into the same
+   Assets (not into AppIcon): it becomes an image named RibbonMark, the small round logo at the top of the watch screens.
 7. Select the **MRDT Watch Watch App** target > **General**: Minimum Deployments watchOS **10.0**; Version **3.29**,
    Build **3** (always the same as the iPhone app). Under **Signing & Capabilities**, choose your team.
 8. Test: pick the **MRDT Watch Watch App** scheme and an Apple Watch simulator (Xcode pairs it with an iPhone simulator),
