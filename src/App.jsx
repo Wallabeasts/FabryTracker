@@ -3014,7 +3014,9 @@ async function startSignIn(system, onBack) {
     state, verifier, systemId: system.id, tokenEndpoint: cfg.token_endpoint, registerEndpoint, redirectUri: appAddress(),
   }));
   const q = new URLSearchParams({
-    response_type: "code", client_id: epicClientId(), redirect_uri: appAddress(), scope: EPIC.scope, state,
+    // The iPhone app also asks for offline access, so MyChart lets the patient choose how long it may keep updating
+    // (see registerAutoUpdate). The website asks only for this one visit.
+    response_type: "code", client_id: epicClientId(), redirect_uri: appAddress(), scope: IOS_APP ? `${EPIC.scope} offline_access` : EPIC.scope, state,
     aud: system.fhirBase, code_challenge: challenge, code_challenge_method: "S256",
   });
   const signInUrl = `${cfg.authorization_endpoint}?${q.toString()}`;
