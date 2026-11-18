@@ -9,6 +9,7 @@ import {
 import { checkPassword } from "./passwords.js";
 import { NATIVE_APP, IOS_APP, saveFileInApp, healthAvailable, healthConnect, healthRead, watchStatus, watchSetup, watchPending, watchClear, nativeBioReason, nativeBioDevice, PORTAL_REDIRECT, nativePortalSignIn, nativeHttp, saveBinaryInApp, ANDROID_APP, portalKeyPublic, portalKeySign, portalKeyRemove } from "./native.js";
 import { makeTrendsPdf } from "./trendsPdf.js";
+import { mapVitals } from "./recordImport.js";
 import { makeVoiceParser } from "./voice.js";
 import { labInfo } from "./labInfo.js";
 import { ALERT_EVERY_DAYS, alertDue, cleanWatch, countryName, countryOptions, fetchEnrolling, matchTrials } from "./trialAlerts.js";
@@ -3094,17 +3095,26 @@ async function downloadRecord(system, accessToken, patientId) {
   const origin = new URL(base).origin;
   const get = (url) => fetchJSON(url, { headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/fhir+json" } }, system.name);
   const patient = await get(`${base}Patient/${encodeURIComponent(patientId)}`);
-  const observations = [];
-  let url = `${base}Observation?patient=${encodeURIComponent(patientId)}&category=laboratory&_count=200`;
-  for (let page = 0; url && page < 20; page++) {
-    const bundle = await get(url);
-    (bundle.entry || []).forEach((e) => { if (e.resource && e.resource.resourceType === "Observation") observations.push(e.resource); });
-    const next = (bundle.link || []).find((l) => l.relation === "next");
-    // Only follow "next page" links on the same server, so the access token never goes anywhere else.
-    url = next && isWebLink(next.url) && new URL(next.url).origin === origin ? next.url : null;
-  }
+  const searchAll = async (first, type) => {
+    const found = [];
+    let url = first;
+    for (let page = 0; url && page < 20; page++) {
+      const bundle = await get(url);
+      (bundle.entry || []).forEach((e) => { if (e.resource && e.resource.resourceType === type) found.push(e.resource); });
+      const next = (bundle.link || []).find((l) => l.relation === "next");
+      // Only follow "next page" links on the same server, so the access token never goes anywhere else.
+      url = next && isWebLink(next.url) && new URL(next.url).origin === origin ? next.url : null;
+    }
+    return found;
+  };
+  const pid = encodeURIComponent(patientId);
+  const observations = await searchAll(`${base}Observation?patient=${pid}&category=laboratory&_count=200`, "Observation");
+  // Vital signs are an extra: if a health system doesn't share them, the lab results still come in.
+  const vitalObs = await searchAll(`${base}Observation?patient=${pid}&category=vital-signs&_count=200`, "Observation").catch(() => []);
   const name = (patient.name || [])[0] || {};
-  const { entries, skipped } = mapObservations(observations);
+  const labs = mapObservations(observations);
+  const entries = [...labs.entries, ...mapVitals(vitalObs)];
+  const skipped = labs.skipped;
   return {
     systemName: system.name,
     patientName: name.text || [...(name.given || []), name.family].filter(Boolean).join(" "),
@@ -3112,10 +3122,24 @@ async function downloadRecord(system, accessToken, patientId) {
       birthDate: /^\d{4}-\d{2}-\d{2}$/.test(patient.birthDate || "") ? patient.birthDate : "",
       sex: patient.gender === "female" ? "Female" : patient.gender === "male" ? "Male" : "",
     },
-    totalLabs: observations.length,
+    totalLabs: observations.length + vitalObs.length,
     entries,
     skipped,
   };
+}
+
+// The results from a record that are new for this person and on this condition's charts. Vital signs are skipped on
+// days that already have that measure (typed by hand or from Apple Health).
+const VITAL_IDS = new Set(["sbp", "dbp", "hr", "weight", "heightCm"]);
+function newFromRecord(r, rec, cond) {
+  const entries = rec.entries || [];
+  const haveIds = new Set(entries.map((e) => e.fhirId).filter(Boolean));
+  const haveDays = new Set(entries.flatMap((e) => [...VITAL_IDS].filter((k) => hasVal(e[k])).map((k) => `${e.date}|${k}`)));
+  const allowed = condMetricIds(cond);
+  const fresh = r.entries.filter((e) => !haveIds.has(e.fhirId) && allowed.has(e.metric)
+    && !(VITAL_IDS.has(e.metric) && haveDays.has(`${e.date}|${e.metric}`)));
+  const already = r.entries.filter((e) => haveIds.has(e.fhirId)).length;
+  return { fresh, already };
 }
 
 // ---------- Automatic updates (iPhone app) ----------
@@ -3236,7 +3260,7 @@ function StepList({ items }) {
 }
 
 // Walks a patient through connecting their MyChart account, one screen at a time.
-function ConnectWizard({ connect, setConnect, region, units, profile, personName, metricIds, existingFhirIds, onImport, onLink, onUnlink, onClose, onSeeCharts }) {
+function ConnectWizard({ connect, setConnect, region, units, profile, personName, record, cond, onImport, onLink, onUnlink, onClose, onSeeCharts }) {
   const [systemId, setSystemId] = useState(HEALTH_SYSTEMS.length === 1 ? HEALTH_SYSTEMS[0].id : "");
   const [search, setSearch] = useState("");
   const [useProfile, setUseProfile] = useState(true);
@@ -3382,8 +3406,7 @@ function ConnectWizard({ connect, setConnect, region, units, profile, personName
   } else if (stage === "review") {
     const r = connect.result;
     // Only the tests this condition tracks are offered.
-    const fresh = r.entries.filter((e) => !existingFhirIds.has(e.fhirId) && (!metricIds || metricIds.has(e.metric)));
-    const already = r.entries.filter((e) => existingFhirIds.has(e.fhirId)).length;
+    const { fresh, already } = newFromRecord(r, record, cond);
     const byMetric = {};
     fresh.forEach((e) => { (byMetric[e.metric] = byMetric[e.metric] || []).push(e); });
     const needProfile = (r.profile.birthDate && r.profile.birthDate !== profile.birthDate) || (r.profile.sex && r.profile.sex !== profile.sex);
@@ -3391,7 +3414,7 @@ function ConnectWizard({ connect, setConnect, region, units, profile, personName
       <>
         <h2 className="text-2xl font-bold mb-1">Here's what we found</h2>
         <p className="text-base mb-4" style={{ color: C.muted }}>
-          From {r.systemName}{r.patientName ? ` for ${r.patientName}` : ""}. {r.totalLabs} lab results were checked.
+          From {r.systemName}{r.patientName ? ` for ${r.patientName}` : ""}. {r.totalLabs} results were checked.
         </p>
         {fresh.length > 0 ? (
           <ul className="mb-3 rounded-lg" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
@@ -3449,7 +3472,7 @@ function ConnectWizard({ connect, setConnect, region, units, profile, personName
                 const n = onImport(fresh, needProfile && useProfile ? r.profile : null, r.systemName);
                 setConnect({ stage: "done", added: n, systemName: r.systemName, linked: Boolean(r.link) });
               }}>
-                {fresh.length ? `Add ${fresh.length} results` : "Update my profile"}
+                {fresh.length ? `Add ${fresh.length} ${fresh.length === 1 ? "result" : "results"}` : "Update my profile"}
               </Button>
               <Button kind="secondary" onClick={() => { if (r.link && onUnlink) onUnlink(r.link); onClose(); }}>Don't add</Button>
             </>
@@ -7529,10 +7552,8 @@ function FabryTracker() {
             const r = await autoUpdateRecord(link);
             const cur = recordsRef.current[pid];
             if (!cur) continue;
-            const allowed = condMetricIds(condOf(cur));
-            const have = new Set((cur.entries || []).map((e) => e.fhirId).filter(Boolean));
-            const added = r.entries.filter((e) => !have.has(e.fhirId) && allowed.has(e.metric))
-              .map((e) => ({ id: uid(), date: e.date, [e.metric]: e.value, fhirId: e.fhirId, source: "record" }));
+            const { fresh } = newFromRecord(r, cur, condOf(cur));
+            const added = fresh.map((e) => ({ id: uid(), date: e.date, [e.metric]: e.value, fhirId: e.fhirId, source: "record" }));
             setRecords((rs) => {
               const x = rs[pid];
               if (!x) return rs;
@@ -9684,8 +9705,7 @@ function FabryTracker() {
       {connect && (
         <ConnectWizard connect={connect} setConnect={setConnect} region={region} units={units} profile={data.profile}
           personName={family ? (activePerson.id === SELF ? "your" : `${personLabel(activePerson)}'s`) : ""}
-          metricIds={condMetricIds(cond)}
-          existingFhirIds={new Set(data.entries.map((e) => e.fhirId).filter(Boolean))} onImport={importRecord}
+          record={data} cond={cond} onImport={importRecord}
           onLink={linkPortal} onUnlink={unlinkPortal}
           onClose={() => setConnect(null)} onSeeCharts={() => { setConnect(null); setTab("trends"); }} />
       )}
