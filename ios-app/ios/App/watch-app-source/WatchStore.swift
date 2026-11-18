@@ -71,7 +71,34 @@ final class WatchStore: NSObject, @preconcurrency WCSessionDelegate {
         guard WCSession.default.activationState == .activated else { return }
         let queued = waiting
         waiting = []
-        queued.forEach { WCSession.default.transferUserInfo($0) }
+        queued.forEach { deliver($0) }
+    }
+
+    // Straight to the phone when it's in reach (it arrives at once). Otherwise, or if that fails, Apple's queue
+    // delivers it later, even if the phone is away or the app on it is closed.
+    private func deliver(_ item: [String: Any]) {
+        let s = WCSession.default
+        guard WCSession.isSupported(), s.activationState == .activated else { waiting.append(item); return }
+        guard s.isReachable, let data = try? JSONSerialization.data(withJSONObject: item) else {
+            s.transferUserInfo(item)
+            return
+        }
+        s.sendMessageData(data, replyHandler: { _ in }, errorHandler: { _ in
+            if let again = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                WCSession.default.transferUserInfo(again)
+            }
+        })
+    }
+
+    // Asks the phone for the Quick Log buttons, for when the watch app opens before the phone has sent them.
+    private func askForConfig() {
+        let s = WCSession.default
+        guard s.activationState == .activated, s.isReachable,
+              let data = try? JSONSerialization.data(withJSONObject: ["want": "config"]) else { return }
+        s.sendMessageData(data, replyHandler: { reply in
+            let json = String(data: reply, encoding: .utf8)
+            Task { @MainActor in self.use(json) }
+        }, errorHandler: { _ in })
     }
 
     private static let dayFormat: DateFormatter = {
@@ -89,11 +116,7 @@ final class WatchStore: NSObject, @preconcurrency WCSessionDelegate {
         item["id"] = UUID().uuidString
         item["person"] = config?.person ?? ""
         item["date"] = Self.dayFormat.string(from: Date())
-        if WCSession.isSupported() && WCSession.default.activationState == .activated {
-            WCSession.default.transferUserInfo(item)
-        } else {
-            waiting.append(item)
-        }
+        deliver(item)
         WKInterfaceDevice.current().play(.success)
         recent.insert(recentText, at: 0)
         if recent.count > 5 { recent.removeLast(recent.count - 5) }
@@ -121,6 +144,14 @@ final class WatchStore: NSObject, @preconcurrency WCSessionDelegate {
         Task { @MainActor in
             self.use(json)
             self.sendWaiting()
+            self.askForConfig()
+        }
+    }
+
+    nonisolated func sessionReachabilityDidChange(_ session: WCSession) {
+        Task { @MainActor in
+            self.sendWaiting()
+            if self.config == nil { self.askForConfig() }
         }
     }
 

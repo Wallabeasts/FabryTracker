@@ -258,10 +258,15 @@ final class WatchLink: NSObject, WCSessionDelegate {
     // The newest Quick Log setup. Kept so it can be sent again once the watch app is installed.
     func setConfig(_ json: String) {
         queue.sync { lastConfig = json }
+        // Button names only (no health data), kept so the watch can ask for them before the app is opened.
+        UserDefaults.standard.set(json, forKey: "mrdt-watch-config")
         sendConfig()
     }
+    private func savedConfig() -> String? {
+        return queue.sync { lastConfig } ?? UserDefaults.standard.string(forKey: "mrdt-watch-config")
+    }
     private func sendConfig() {
-        guard WCSession.isSupported(), let json = queue.sync(execute: { lastConfig }) else { return }
+        guard WCSession.isSupported(), let json = savedConfig() else { return }
         let s = WCSession.default
         guard s.activationState == .activated, s.isPaired, s.isWatchAppInstalled else { return }
         try? s.updateApplicationContext(["config": json])
@@ -308,7 +313,10 @@ final class WatchLink: NSObject, WCSessionDelegate {
             list.append(clean)
             self.save(Array(list.suffix(500)))
         }
+        // Tell the app's page, so a tap shows up right away when the app is open.
+        DispatchQueue.main.async { NotificationCenter.default.post(name: WatchLink.arrived, object: nil) }
     }
+    static let arrived = Notification.Name("MRDTWatchEntryArrived")
 
     // ---- WCSessionDelegate ----
     func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
@@ -318,6 +326,16 @@ final class WatchLink: NSObject, WCSessionDelegate {
     func sessionDidDeactivate(_ session: WCSession) { session.activate() }
     func sessionWatchStateDidChange(_ session: WCSession) { sendConfig() }
     func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) { add(userInfo) }
+    // Sent directly while the watch and phone are in reach: an entry, or the watch asking for its buttons.
+    func session(_ session: WCSession, didReceiveMessageData messageData: Data, replyHandler: @escaping (Data) -> Void) {
+        guard let obj = try? JSONSerialization.jsonObject(with: messageData) as? [String: Any] else { replyHandler(Data()); return }
+        if obj["want"] as? String == "config" { replyHandler(Data((savedConfig() ?? "").utf8)); return }
+        add(obj)
+        replyHandler(Data("ok".utf8))
+    }
+    func session(_ session: WCSession, didReceiveMessageData messageData: Data) {
+        if let obj = try? JSONSerialization.jsonObject(with: messageData) as? [String: Any] { add(obj) }
+    }
 }
 
 @objc(WatchSyncPlugin)
@@ -330,6 +348,12 @@ public class WatchSyncPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "pending", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "clear", returnType: CAPPluginReturnPromise),
     ]
+
+    override public func load() {
+        NotificationCenter.default.addObserver(forName: WatchLink.arrived, object: nil, queue: .main) { [weak self] _ in
+            self?.bridge?.triggerWindowJSEvent(eventName: "rdt-watch")
+        }
+    }
 
     @objc func status(_ call: CAPPluginCall) {
         call.resolve(WatchLink.shared.status)

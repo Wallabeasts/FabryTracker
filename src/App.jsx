@@ -7548,7 +7548,12 @@ function FabryTracker() {
     const timer = setInterval(pull, 15000);
     const onShow = () => { if (!document.hidden) pull(); };
     document.addEventListener("visibilitychange", onShow);
-    return () => { clearInterval(timer); document.removeEventListener("visibilitychange", onShow); };
+    window.addEventListener("rdt-watch", pull); // the iPhone app says an entry just arrived
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onShow);
+      window.removeEventListener("rdt-watch", pull);
+    };
   }, [loaded]);
   // Saves the spoken entries the patient checked. Lab results on the same day go into one visit.
   const saveWatchVoice = (rows) => {
