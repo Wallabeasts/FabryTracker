@@ -7484,8 +7484,13 @@ function FabryTracker() {
   const trendsRef = useRef(null);
   const [pdfBusy, setPdfBusy] = useState(false);
   const saveTrendsPdf = async () => {
-    if (pdfBusy || !trendsRef.current) return;
+    if (pdfBusy) return;
     setPdfBusy(true);
+    setExportAsk("");
+    const fromTab = tab;
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    if (tab !== "trends") { setTab("trends"); await wait(250); }
+    if (!trendsRef.current) { setPdfBusy(false); setTab(fromTab); return; }
     const root = document.documentElement;
     const before = { theme: root.getAttribute("data-theme"), collapsed, width: trendsRef.current.style.width };
     // Every section open, the light look, no animations, and a page-like width while the charts are drawn.
@@ -7493,7 +7498,6 @@ function FabryTracker() {
     root.setAttribute("data-theme", "light");
     root.setAttribute("data-printing", "");
     trendsRef.current.style.width = "440px";
-    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     try {
       await wait(900);
       const dateFmt = (t) => new Date(t).toLocaleDateString(dateLocale(), { day: "numeric", month: "short", year: "numeric" });
@@ -7537,6 +7541,10 @@ function FabryTracker() {
       if (before.theme === null) root.removeAttribute("data-theme"); else root.setAttribute("data-theme", before.theme);
       setCollapsed(before.collapsed);
       setPdfBusy(false);
+      if (fromTab !== "trends") {
+        setTab(fromTab);
+        setTimeout(() => { const el = document.getElementById("export"); if (el) el.scrollIntoView({ block: "start" }); }, 120);
+      }
     }
   };
 
@@ -8552,12 +8560,6 @@ function FabryTracker() {
                 </div>
               </div>
             )}
-            {data.entries.length > 0 && !tourOn && (
-              <div className="flex flex-wrap items-center gap-3 mb-3">
-                <Button kind="secondary" onClick={saveTrendsPdf} disabled={pdfBusy}>{pdfBusy ? "Making your PDF…" : "Save as PDF"}</Button>
-                <span className="text-sm" style={{ color: C.muted }}>A printable copy of your charts to share with your care team.</span>
-              </div>
-            )}
             {pdfBusy && (
               <div className="fixed inset-0 z-50 flex items-center justify-center p-6" role="status" aria-live="polite"
                 style={{ background: C.bg }}>
@@ -9298,13 +9300,31 @@ function FabryTracker() {
             <div className="flex flex-wrap gap-2 mb-2">
               <Button onClick={() => { setExported(null); setExportAsk("backup"); }}>Export backup (JSON)</Button>
               <Button kind="secondary" onClick={() => { setExported(null); setExportAsk("csv"); }}>Export spreadsheet (CSV)</Button>
+              <Button kind="secondary" onClick={() => { setExported(null); setExportAsk("pdf"); }} disabled={pdfBusy || !data.entries.length}>
+                Export charts (PDF)
+              </Button>
             </div>
+            <p className="text-sm mb-3" style={{ color: C.muted }}>A PDF of your charts is easiest to print or bring to appointments.</p>
             <p className="text-sm mb-3" data-last-backup style={{ color: C.muted }}>
               {backupDates[activeId] ? `Last backup: ${fmtDate(toT(backupDates[activeId]))}.` : "No backup yet."}
             </p>
             </div>
             {exportAsk === "backup" && (
               <BackupOptions onExport={(pw) => exportData("json", pw)} onCancel={() => setExportAsk("")} />
+            )}
+            {exportAsk === "pdf" && (
+              <div className="fx-fade p-3 mb-4 rounded-md" role="group" aria-label="PDF warning"
+                style={{ background: C.subtle, border: `2px solid ${C.error}` }}>
+                <p className="text-sm font-bold mb-1" style={{ color: C.error }}>PDF files can't be locked</p>
+                <p className="text-sm mb-3">
+                  Anyone who gets this file can read the health information in it. Only send it to people you trust, like
+                  your care team, and delete it from your phone or computer when you're done.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button onClick={saveTrendsPdf}>Save PDF</Button>
+                  <Button kind="secondary" onClick={() => setExportAsk("")}>Cancel</Button>
+                </div>
+              </div>
             )}
             {exportAsk === "csv" && (
               <div className="fx-fade p-3 mb-4 rounded-md" role="group" aria-label="Spreadsheet warning"
