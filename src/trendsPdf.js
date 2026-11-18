@@ -197,47 +197,69 @@ export async function makeTrendsPdf(root, info) {
   ctx.fillRect(M, y, CW, 2);
   y += 30;
 
-  // The charts.
-  for (const it of items) {
-    if (it.kind === "heading") {
-      room(70 + 300);
+  // The charts: two columns, so four fit on a page. A section heading starts a new row.
+  const GAP = 44;
+  const COLW = (CW - GAP) / 2;
+  const cells = [];
+  items.forEach((it) => {
+    if (it.kind === "heading") { cells.push({ heading: it.text }); return; }
+    it.charts.forEach((ch, ci) => cells.push({ title: ci === 0 ? it.title : "", value: ci === 0 ? it.value : [], ch }));
+  });
+  // Works out a chart cell's lines and height without drawing it.
+  const measure = (c) => {
+    setFont(22, 700);
+    const valW = c.value[0] ? (setFont(20, 700), ctx.measureText(c.value[0]).width) : 0;
+    setFont(22, 700);
+    const titleLines = c.title ? wrap(c.title, COLW - valW - 16).slice(0, 2) : [];
+    setFont(16, 400);
+    let sumLines = c.ch.summary ? wrap(c.ch.summary, COLW) : [];
+    if (sumLines.length > 4) sumLines = [...sumLines.slice(0, 3), `${sumLines[3].replace(/\s+\S*$/, "")}…`];
+    const chartH = c.ch.h * (COLW / c.ch.w);
+    const headH = Math.max(titleLines.length * 28, c.value[1] ? 50 : 28) + 8;
+    return { titleLines, sumLines, chartH, headH, h: headH + chartH + 10 + sumLines.length * 21 + 20 };
+  };
+  const drawCell = (c, m, x0) => {
+    let yy = y;
+    ctx.fillStyle = INK;
+    setFont(22, 700);
+    m.titleLines.forEach((l, k) => text(l, x0, yy + 22 + k * 28));
+    if (c.value[0]) { setFont(20, 700); text(c.value[0], x0 + COLW, yy + 22, "right"); }
+    if (c.value[1]) { setFont(15, 400); ctx.fillStyle = MUTED; text(c.value[1], x0 + COLW, yy + 44, "right"); }
+    yy += m.headH;
+    ctx.drawImage(c.ch.img, rtl ? W - x0 - COLW : x0, yy, COLW, m.chartH);
+    yy += m.chartH + 10;
+    ctx.fillStyle = MUTED;
+    setFont(16, 400);
+    m.sumLines.forEach((l) => { text(l, x0, yy + 15); yy += 21; });
+  };
+  const bottom = () => H - M - 22;
+  let i = 0;
+  while (i < cells.length) {
+    const c = cells[i];
+    if (c.heading) {
+      // Keep a heading with at least one row of charts after it.
+      const next = cells[i + 1] && !cells[i + 1].heading ? measure(cells[i + 1]).h : 0;
+      if (y + 60 + next > bottom()) newPage();
       ctx.fillStyle = ACCENT;
-      ctx.fillRect(rtl ? W - M - 8 : M, y, 8, 40);
+      ctx.fillRect(rtl ? W - M - 8 : M, y, 8, 36);
       ctx.fillStyle = INK;
-      setFont(30, 700);
-      text(it.text, M + 22, y + 31);
-      y += 64;
+      setFont(28, 700);
+      text(c.heading, M + 22, y + 28);
+      y += 56;
+      i += 1;
       continue;
     }
-    for (const [ci, ch] of it.charts.entries()) {
-      const scale = CW / ch.w;
-      const chartH = ch.h * scale;
-      setFont(20, 400);
-      const sumLines = ch.summary ? wrap(ch.summary, CW) : [];
-      const head = ci === 0 ? 48 + (it.value.length > 1 ? 26 : 0) : 0;
-      const need = head + chartH + 12 + sumLines.length * 27 + 34;
-      room(Math.min(need, H - M * 2 - 60));
-      if (ci === 0) {
-        ctx.fillStyle = INK;
-        setFont(26, 700);
-        const valW = it.value[0] ? (setFont(24, 700), ctx.measureText(it.value[0]).width) : 0;
-        setFont(26, 700);
-        const titleLines = wrap(it.title, CW - valW - 30);
-        text(titleLines[0] || "", M, y + 28);
-        if (it.value[0]) { setFont(24, 700); text(it.value[0], W - M, y + 28, "right"); }
-        if (it.value[1]) { setFont(19, 400); ctx.fillStyle = MUTED; text(it.value[1], W - M, y + 56, "right"); }
-        y += head;
-      }
-      ctx.drawImage(ch.img, M, y, CW, chartH);
-      y += chartH + 12;
-      ctx.fillStyle = MUTED;
-      setFont(20, 400);
-      sumLines.forEach((l) => { room(27); ctx.fillStyle = MUTED; setFont(20, 400); text(l, M, y + 20); y += 27; });
-      y += 14;
-      ctx.fillStyle = LINE;
-      ctx.fillRect(M, y, CW, 1);
-      y += 24;
-    }
+    const row = [c];
+    if (cells[i + 1] && !cells[i + 1].heading) row.push(cells[i + 1]);
+    const ms = row.map(measure);
+    const rowH = Math.max(...ms.map((m) => m.h));
+    if (y + rowH > bottom()) newPage();
+    row.forEach((cell, k) => drawCell(cell, ms[k], M + k * (COLW + GAP)));
+    y += rowH;
+    ctx.fillStyle = LINE;
+    ctx.fillRect(M, y - 10, CW, 1);
+    y += 14;
+    i += row.length;
   }
 
   // Footer on every page.

@@ -7492,7 +7492,7 @@ function FabryTracker() {
     setCollapsed({});
     root.setAttribute("data-theme", "light");
     root.setAttribute("data-printing", "");
-    trendsRef.current.style.width = "760px";
+    trendsRef.current.style.width = "440px";
     const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     try {
       await wait(900);
