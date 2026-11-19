@@ -3095,10 +3095,10 @@ async function downloadRecord(system, accessToken, patientId) {
   const origin = new URL(base).origin;
   const get = (url) => fetchJSON(url, { headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/fhir+json" } }, system.name);
   const patient = await get(`${base}Patient/${encodeURIComponent(patientId)}`);
-  const searchAll = async (first, type) => {
+  const searchAll = async (first, type, maxPages = 20) => {
     const found = [];
     let url = first;
-    for (let page = 0; url && page < 20; page++) {
+    for (let page = 0; url && page < maxPages; page++) {
       const bundle = await get(url);
       (bundle.entry || []).forEach((e) => { if (e.resource && e.resource.resourceType === type) found.push(e.resource); });
       const next = (bundle.link || []).find((l) => l.relation === "next");
@@ -3108,9 +3108,14 @@ async function downloadRecord(system, accessToken, patientId) {
     return found;
   };
   const pid = encodeURIComponent(patientId);
+  // Vital signs are an extra, read alongside the labs with a time limit: if a health system is slow with them or
+  // doesn't share them, the lab results still come in.
+  const vitalsLater = Promise.race([
+    searchAll(`${base}Observation?patient=${pid}&category=vital-signs&_count=200`, "Observation", 5).catch(() => null),
+    new Promise((resolve) => setTimeout(() => resolve(null), 25000)),
+  ]);
   const observations = await searchAll(`${base}Observation?patient=${pid}&category=laboratory&_count=200`, "Observation");
-  // Vital signs are an extra: if a health system doesn't share them, the lab results still come in.
-  const vitalObs = await searchAll(`${base}Observation?patient=${pid}&category=vital-signs&_count=200`, "Observation").catch(() => []);
+  const vitalObs = (await vitalsLater) || [];
   const name = (patient.name || [])[0] || {};
   const labs = mapObservations(observations);
   const entries = [...labs.entries, ...mapVitals(vitalObs)];
