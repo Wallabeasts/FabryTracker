@@ -215,7 +215,11 @@ export async function watchClear(ids) {
 //   patient back to PORTAL_REDIRECT, which only this app can receive;
 // - requests to the health system (the sign-in token and the lab results) are made by the app itself, because health
 //   systems don't accept requests from inside an app's page.
-export const PORTAL_REDIRECT = "com.myrarediseasetracker.app://oauth/epic";
+// On iPhone the health system sends the patient to the website's /epic/ page (also registered with Epic), which
+// hands the one-time code straight to the app at com.myrarediseasetracker.app://oauth/epic. Going directly to the
+// app's own address left MyChart stuck after "Allow" on iPhone.
+export const PORTAL_REDIRECT = location.protocol === "capacitor:"
+  ? "https://myrarediseasetracker.com/epic/" : "com.myrarediseasetracker.app://oauth/epic";
 const PORTAL_SCHEME = "com.myrarediseasetracker.app";
 let portalWaiting = null;
 const httpWaiting = new Map();
