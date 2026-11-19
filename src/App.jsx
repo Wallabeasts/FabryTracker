@@ -3064,6 +3064,10 @@ const isReturnFromSignIn = () => {
 
 // Step 2 of sign-in: back from MyChart. Swap the one-time code for an access token, download the
 // patient's details and lab results, and hand back what was found. Nothing is saved here.
+// What the connection is doing right now, shown on the "Getting your results" screen so a slow step can be seen.
+let connectStep = () => {};
+const step = (text) => { try { connectStep(text); } catch (e) { /* screen closed */ } };
+
 async function finishSignIn(fromApp) {
   const q = new URLSearchParams(fromApp === undefined ? window.location.search : fromApp);
   if (fromApp === undefined) window.history.replaceState({}, "", window.location.pathname); // remove the one-time code from the address bar
@@ -3079,6 +3083,7 @@ async function finishSignIn(fromApp) {
   const system = HEALTH_SYSTEMS.find((s) => s.id === saved.systemId);
   if (!system) throw new Error("That health system is no longer in the list. Please start again.");
 
+  step(`Signed in. Getting permission from ${system.name}…`);
   const token = await fetchJSON(saved.tokenEndpoint, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
@@ -3095,6 +3100,7 @@ async function finishSignIn(fromApp) {
   let linkError = "";
   let accessToken = token.access_token;
   if (IOS_APP && saved.registerEndpoint) {
+    step("Setting up automatic updates…");
     link = await registerAutoUpdate(system, token, saved.tokenEndpoint, saved.registerEndpoint)
       .catch((e) => { linkError = (e && e.message) || "unknown problem"; return null; });
     if (link) {
@@ -3115,6 +3121,7 @@ async function finishSignIn(fromApp) {
   }
   if (accessToken !== token.access_token && (!result || !result.labCount)) {
     try {
+      step("Reading lab results again with this sign-in…");
       const again = await downloadRecord(system, token.access_token, token.patient, { vitals: !(result && result.vitalCount) });
       if (result && result.vitalCount && again.labCount) {
         // Labs from this pass, vital signs from the first one.
@@ -3144,7 +3151,7 @@ async function downloadRecord(system, accessToken, patientId, { vitals = true } 
   // example when the pass doesn't cover lab results. Those notes are kept so the patient sees the reason instead of
   // an empty result.
   const problems = [];
-  const searchAll = async (first, type, maxPages = 20, deadline = Infinity) => {
+  const searchAll = async (first, type, maxPages = 20, deadline = Infinity, label = "") => {
     const found = [];
     let url = first;
     for (let page = 0; url && page < maxPages; page++) {
@@ -3159,6 +3166,7 @@ async function downloadRecord(system, accessToken, patientId, { vitals = true } 
         if (e.resource.resourceType === type) found.push(e.resource);
         else if (e.resource.resourceType === "OperationOutcome") problems.push(e.resource);
       });
+      if (label) step(`${label} (${found.length} so far)…`);
       const next = (bundle.link || []).find((l) => l.relation === "next");
       // Only follow "next page" links on the same server, so the access token never goes anywhere else.
       url = next && isWebLink(next.url) && new URL(next.url).origin === origin ? next.url : null;
@@ -3166,10 +3174,13 @@ async function downloadRecord(system, accessToken, patientId, { vitals = true } 
     return found;
   };
   const pid = encodeURIComponent(patientId);
-  const observations = await searchAll(`${base}Observation?patient=${pid}&category=laboratory&_count=200`, "Observation");
+  step("Reading lab results…");
+  const observations = await searchAll(`${base}Observation?patient=${pid}&category=laboratory&_count=200`, "Observation",
+    20, Infinity, "Reading lab results");
+  if (vitals) step(`Reading vital signs (up to ${VITALS_SECONDS} seconds)…`);
   const vitalObs = vitals
     ? (await searchAll(`${base}Observation?patient=${pid}&category=vital-signs&_count=200`, "Observation", 5,
-      Date.now() + VITALS_SECONDS * 1000).catch(() => null)) || []
+      Date.now() + VITALS_SECONDS * 1000, "Reading vital signs").catch(() => null)) || []
     : [];
   if (!observations.length && !vitalObs.length) {
     const issue = problems.flatMap((p) => p.issue || []).find((i) => ["error", "fatal"].includes(i.severity));
@@ -3348,6 +3359,15 @@ function ConnectWizard({ connect, setConnect, region, units, profile, personName
   const go = (s) => setConnect({ ...connect, stage: s });
   const clientReady = Boolean(epicClientId());
   const numbered = { intro: 1, system: 2, prepare: 3 };
+  const [stepText, setStepText] = useState("");
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => { connectStep = setStepText; return () => { connectStep = () => {}; }; }, []);
+  useEffect(() => {
+    if (stage !== "working") { setSeconds(0); setStepText(""); return undefined; }
+    const t0 = Date.now();
+    const timer = setInterval(() => setSeconds(Math.round((Date.now() - t0) / 1000)), 1000);
+    return () => clearInterval(timer);
+  }, [stage]);
 
   // Automatic updates (iPhone app) are kept as soon as the results are shown; "Don't add" removes them again.
   const linkResult = connect.stage === "review" && connect.result && connect.result.link;
@@ -3488,6 +3508,11 @@ function ConnectWizard({ connect, setConnect, region, units, profile, personName
         <p className="text-sm mt-1" style={{ color: C.muted }}>
           {stage === "signing" ? "You'll see your health system's sign-in page in a moment." : "This usually takes a few seconds."}
         </p>
+        {stage === "working" && (
+          <p className="text-sm mt-3" style={{ color: C.ink }} aria-live="polite">
+            {stepText || "Signed in."}{seconds >= 3 ? ` ${seconds} s` : ""}
+          </p>
+        )}
       </div>
     );
   } else if (stage === "review") {
