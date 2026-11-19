@@ -3103,23 +3103,12 @@ async function finishSignIn(fromApp) {
       if (fresh && fresh.access_token) accessToken = fresh.access_token;
     }
   }
-  // Results are read with the automatic-update pass first. If that fails or comes back empty, they are read again
-  // with the pass from this sign-in, which is the one that worked before automatic updates were added.
-  let result = null;
-  let firstError = null;
+  let result;
   try {
     result = await downloadRecord(system, accessToken, token.patient);
   } catch (e) {
     if (accessToken === token.access_token) throw e;
-    firstError = e;
-  }
-  if (accessToken !== token.access_token && (!result || !result.totalLabs)) {
-    try {
-      const again = await downloadRecord(system, token.access_token, token.patient);
-      if (!result || again.totalLabs > result.totalLabs) result = again;
-    } catch (e) {
-      if (!result) throw firstError || e;
-    }
+    result = await downloadRecord(system, token.access_token, token.patient);
   }
   return { ...result, link, linkError };
 }
@@ -3130,21 +3119,12 @@ async function downloadRecord(system, accessToken, patientId) {
   const origin = new URL(base).origin;
   const get = (url) => fetchJSON(url, { headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/fhir+json" } }, system.name);
   const patient = await get(`${base}Patient/${encodeURIComponent(patientId)}`);
-  // Epic sometimes answers "OK" with an empty list plus a note (OperationOutcome) saying why nothing came back, for
-  // example when the pass doesn't cover lab results. Those notes are kept so the patient sees the reason instead of
-  // an empty result.
-  const problems = [];
   const searchAll = async (first, type, maxPages = 20) => {
     const found = [];
     let url = first;
     for (let page = 0; url && page < maxPages; page++) {
       const bundle = await get(url);
-      if (bundle && bundle.resourceType === "OperationOutcome") { problems.push(bundle); break; }
-      (bundle.entry || []).forEach((e) => {
-        if (!e.resource) return;
-        if (e.resource.resourceType === type) found.push(e.resource);
-        else if (e.resource.resourceType === "OperationOutcome") problems.push(e.resource);
-      });
+      (bundle.entry || []).forEach((e) => { if (e.resource && e.resource.resourceType === type) found.push(e.resource); });
       const next = (bundle.link || []).find((l) => l.relation === "next");
       // Only follow "next page" links on the same server, so the access token never goes anywhere else.
       url = next && isWebLink(next.url) && new URL(next.url).origin === origin ? next.url : null;
@@ -3160,13 +3140,6 @@ async function downloadRecord(system, accessToken, patientId) {
   ]);
   const observations = await searchAll(`${base}Observation?patient=${pid}&category=laboratory&_count=200`, "Observation");
   const vitalObs = (await vitalsLater) || [];
-  if (!observations.length && !vitalObs.length) {
-    const issue = problems.flatMap((p) => p.issue || []).find((i) => ["error", "fatal"].includes(i.severity));
-    if (issue) {
-      const why = (issue.details && issue.details.text) || issue.diagnostics || issue.code || "no reason given";
-      throw new Error(`${system.name} didn't send any results (${why})`);
-    }
-  }
   const name = (patient.name || [])[0] || {};
   const labs = mapObservations(observations);
   const entries = [...labs.entries, ...mapVitals(vitalObs)];
@@ -3500,9 +3473,7 @@ function ConnectWizard({ connect, setConnect, region, units, profile, personName
           </ul>
         ) : (
           <p className="text-base mb-3 p-3 rounded-md" style={{ background: C.subtle }}>
-            {r.totalLabs
-              ? `No new results for ${APP_INFO.name}'s charts were found.`
-              : `${r.systemName} didn't send any lab results this time. Please try again in a few minutes; if it happens again, the results may not be shared with apps yet.`}
+            {`No new results for ${APP_INFO.name}'s charts were found.`}
           </p>
         )}
         {already > 0 && <p className="text-sm mb-1" style={{ color: C.muted }}>{already} results were already added before and will be skipped.</p>}
