@@ -3085,5 +3085,11 @@
   "Export charts (PDF)",
   "A PDF of your charts is easiest to print or bring to appointments.",
   "PDF files can't be locked",
-  "Save PDF"
+  "Save PDF",
+  "Sign in again",
+  "Details for support",
+  "Signing in once more usually fixes this. Automatic updates stay off for now; nothing has been added or lost.",
+  "If you expected results, sign in once more to check again. Automatic updates stay off for now.",
+  "Last time, the connection to {0} stopped before it finished, so nothing was added. Please try again.",
+  "{0} didn't send any lab results this time. Please try again in a few minutes; if it happens again, the results may not be shared with apps yet."
 ]

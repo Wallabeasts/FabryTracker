@@ -3085,5 +3085,11 @@
   "Exporter les graphiques (PDF)",
   "Un PDF de vos graphiques est le plus simple à imprimer ou à apporter aux rendez-vous.",
   "Les fichiers PDF ne peuvent pas être verrouillés",
-  "Enregistrer le PDF"
+  "Enregistrer le PDF",
+  "Se reconnecter",
+  "Détails pour l'assistance",
+  "Se reconnecter une fois de plus règle généralement le problème. Les mises à jour automatiques restent désactivées pour l'instant ; rien n'a été ajouté ni perdu.",
+  "Si vous attendiez des résultats, reconnectez-vous pour vérifier à nouveau. Les mises à jour automatiques restent désactivées pour l'instant.",
+  "La dernière fois, la connexion à {0} s'est arrêtée avant la fin ; rien n'a donc été ajouté. Veuillez réessayer.",
+  "{0} n'a envoyé aucun résultat d'analyse cette fois-ci. Veuillez réessayer dans quelques minutes ; si cela se reproduit, les résultats ne sont peut-être pas encore partagés avec les applications."
 ]
