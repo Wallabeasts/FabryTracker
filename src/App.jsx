@@ -2855,24 +2855,36 @@ function AppleWatchCard() {
 // The patient signs in on their health system's own MyChart page. The app gets read-only access,
 // downloads their lab results straight to this device, and never stores the access token.
 const EPIC = {
-  // Non-production client ID from fhir.epic.com while testing, production client ID when live.
-  // Empty means the connection isn't switched on yet: patients can read the steps but can't sign in.
-  clientId: "4e67c358-b85d-4cbe-986f-1d755a4a51cf", // Non-Production (Epic sandbox) client ID of the "My Rare Disease Tracker" registration (appId 65257). Production ID: eeef3b2a-1c70-420f-b6ee-ba2d70b1a2be
+  // Client IDs of the "My Rare Disease Tracker" registration on fhir.epic.com (appId 65257). Real health systems use
+  // the production ID; Epic's test system (marked `sandbox` below) uses the non-production one, so testing with
+  // Epic's sample patients keeps working.
+  clientId: "eeef3b2a-1c70-420f-b6ee-ba2d70b1a2be",
+  sandboxClientId: "4e67c358-b85d-4cbe-986f-1d755a4a51cf",
   scope: "launch/patient openid fhirUser patient/Patient.read patient/Observation.read",
 };
 // Health systems patients can choose. Add production systems from Epic's published list of patient-access
-// endpoints. build.mjs allows the page to contact each fhirBase listed here.
+// endpoints (open.epic.com, Endpoints, "R4 Endpoints as a Brands File"); copy the address, don't look it up while
+// the app runs. Each system must also be activated for this app under Review & Manage Downloads on fhir.epic.com.
+// build.mjs allows the page to contact each fhirBase listed here.
 const HEALTH_SYSTEMS = [
+  {
+    id: "uab",
+    name: "UAB Medicine",
+    note: "Birmingham, Alabama: UAB Hospital, The Kirklin Clinic, St. Vincent's and other UAB locations",
+    fhirBase: "https://epicproxy.et1460.epichosted.com/APIPROXYPRD/api/FHIR/R4/",
+  },
   {
     id: "epic-sandbox",
     name: "Epic test system",
     note: "For testing with Epic's sample patients",
     fhirBase: "https://fhir.epic.com/interconnect-fhir-oauth/api/FHIR/R4/",
+    sandbox: true,
   },
 ];
 const CONNECT_KEY = "fabry-tracker-connect";
 const DEV_CLIENT_KEY = "fabry-tracker-dev-client-id"; // lets a developer test before the client ID is built in
-const epicClientId = () => {
+const epicClientId = (system) => {
+  if (system && system.sandbox && EPIC.sandboxClientId) return EPIC.sandboxClientId;
   if (EPIC.clientId) return EPIC.clientId;
   try { return window.localStorage.getItem(DEV_CLIENT_KEY) || ""; } catch (e) { return ""; }
 };
@@ -3017,7 +3029,7 @@ async function startSignIn(system, onBack) {
   const q = new URLSearchParams({
     // The iPhone app also asks for offline access, so MyChart lets the patient choose how long it may keep updating
     // (see registerAutoUpdate). The website asks only for this one visit.
-    response_type: "code", client_id: epicClientId(), redirect_uri: appAddress(), scope: IOS_APP ? `${EPIC.scope} offline_access` : EPIC.scope, state,
+    response_type: "code", client_id: epicClientId(system), redirect_uri: appAddress(), scope: IOS_APP ? `${EPIC.scope} offline_access` : EPIC.scope, state,
     aud: system.fhirBase, code_challenge: challenge, code_challenge_method: "S256",
   });
   const signInUrl = `${cfg.authorization_endpoint}?${q.toString()}`;
@@ -3060,7 +3072,7 @@ async function finishSignIn(fromApp) {
     headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
     body: new URLSearchParams({
       grant_type: "authorization_code", code: q.get("code") || "", redirect_uri: saved.redirectUri,
-      client_id: epicClientId(), code_verifier: saved.verifier,
+      client_id: epicClientId(system), code_verifier: saved.verifier,
     }).toString(),
   }, system.name);
   if (!token.access_token || !token.patient) throw new Error(`${system.name} didn't grant access to your record`);
@@ -3166,7 +3178,7 @@ async function registerAutoUpdate(system, token, tokenEndpoint, registerEndpoint
       res = await nativeHttp(registerEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json", Authorization: `Bearer ${token.access_token}` },
-        body: JSON.stringify({ software_id: epicClientId(), jwks: { keys: [{ kty: "RSA", n: jwk.n, e: jwk.e }] } }),
+        body: JSON.stringify({ software_id: epicClientId(system), jwks: { keys: [{ kty: "RSA", n: jwk.n, e: jwk.e }] } }),
       });
     } catch (e) {
       throw new Error(`${system.name} couldn't be reached`);
