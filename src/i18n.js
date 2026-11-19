@@ -122,7 +122,10 @@ function doText(node) {
 }
 
 function doAttrs(el) {
-  if (state.lang === "en" || !el.getAttribute || skip(el)) return;
+  // What's typed in a text box is never translated (it's a value, not text on the page), but the box's hint
+  // (placeholder) and label are, even when the box is marked data-no-translate to protect what's typed.
+  if (state.lang === "en" || !el.getAttribute) return;
+  if (skip(el.tagName === "TEXTAREA" ? el.parentElement : el)) return;
   let recs = attrSrc.get(el);
   for (const a of ATTRS) {
     const cur = el.getAttribute(a);
