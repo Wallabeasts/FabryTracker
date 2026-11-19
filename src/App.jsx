@@ -3228,7 +3228,7 @@ async function registerAutoUpdate(system, token, tokenEndpoint, registerEndpoint
       const why = (reg && (reg.error_description || reg.error)) || (res.text || "").slice(0, 80);
       throw new Error(`${system.name} answered ${res.status}${why ? `: ${why}` : ""}`);
     }
-    return { systemId: system.id, systemName: system.name, clientId: String(reg.client_id), tokenEndpoint, tag,
+    return { systemId: system.id, systemName: system.name, fhirBase: system.fhirBase, clientId: String(reg.client_id), tokenEndpoint, tag,
       patient: String(token.patient), since: today(), lastCheck: today() };
   } catch (e) {
     await portalKeyRemove(tag);
@@ -3273,9 +3273,19 @@ async function autoUpdateToken(link) {
   throw new Error(`error ${r.status}`);
 }
 
+// The health system a saved link belongs to. Links made before every Epic system was listed have an older id
+// (for example "uab"), so they're also matched by the server their token address is on.
+function linkSystem(link) {
+  const byId = HEALTH_SYSTEMS.find((s) => s.id === link.systemId);
+  if (byId) return byId;
+  const base = (u) => String(u || "").replace(/\/(api\/FHIR\/R4|oauth2)\/.*$/i, "/").toLowerCase();
+  const want = base(link.fhirBase || link.tokenEndpoint);
+  return HEALTH_SYSTEMS.find((s) => !s.sandbox && base(s.fhirBase) === want) || null;
+}
+
 // Reads the latest results for a saved link. Resolves with the same shape as finishSignIn (without `link`).
 async function autoUpdateRecord(link) {
-  const system = HEALTH_SYSTEMS.find((s) => s.id === link.systemId);
+  const system = linkSystem(link);
   if (!system) throw Object.assign(new Error("That health system is no longer in the list"), { ended: true });
   const token = await autoUpdateToken(link);
   return downloadRecord(system, token.access_token, String(token.patient || link.patient));
