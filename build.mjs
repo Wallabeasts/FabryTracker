@@ -60,7 +60,10 @@ rmSync(work, { recursive: true, force: true });
 // 3. A content security policy that only lets the page talk to the services it uses,
 // including each health system listed in HEALTH_SYSTEMS in App.jsx.
 const appSource = readFileSync(existsSync("src/App.jsx") ? "src/App.jsx" : "App.jsx", "utf8");
-const healthOrigins = [...new Set([...appSource.matchAll(/fhirBase:\s*"(https:\/\/[^/"]+)/g)].map((m) => m[1]))];
+// The full list of Epic health systems (src/epicBrands.json, made by scripts/epic-brands.mjs) is added too.
+const brandOrigins = existsSync("src/epicBrands.json")
+  ? JSON.parse(readFileSync("src/epicBrands.json", "utf8")).e.map((a) => new URL(a).origin) : [];
+const healthOrigins = [...new Set([...[...appSource.matchAll(/fhirBase:\s*"(https:\/\/[^/"]+)/g)].map((m) => m[1]), ...brandOrigins])];
 const scriptHash = createHash("sha256").update(script).digest("base64");
 const csp = [
   "default-src 'none'",

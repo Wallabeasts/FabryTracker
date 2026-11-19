@@ -10,6 +10,7 @@ import { checkPassword } from "./passwords.js";
 import { NATIVE_APP, IOS_APP, saveFileInApp, healthAvailable, healthConnect, healthRead, watchStatus, watchSetup, watchPending, watchClear, nativeBioReason, nativeBioDevice, PORTAL_REDIRECT, nativePortalSignIn, nativeHttp, saveBinaryInApp, ANDROID_APP, portalKeyPublic, portalKeySign, portalKeyRemove } from "./native.js";
 import { makeTrendsPdf } from "./trendsPdf.js";
 import { mapVitals } from "./recordImport.js";
+import EPIC_BRANDS from "./epicBrands.json";
 import { makeVoiceParser } from "./voice.js";
 import { labInfo } from "./labInfo.js";
 import { ALERT_EVERY_DAYS, alertDue, cleanWatch, countryName, countryOptions, fetchEnrolling, matchTrials } from "./trialAlerts.js";
@@ -2862,17 +2863,19 @@ const EPIC = {
   sandboxClientId: "4e67c358-b85d-4cbe-986f-1d755a4a51cf",
   scope: "launch/patient openid fhirUser patient/Patient.read patient/Observation.read",
 };
-// Health systems patients can choose. Add production systems from Epic's published list of patient-access
-// endpoints (open.epic.com, Endpoints, "R4 Endpoints as a Brands File"); copy the address, don't look it up while
-// the app runs. Each system must also be activated for this app under Review & Manage Downloads on fhir.epic.com.
-// build.mjs allows the page to contact each fhirBase listed here.
+// Health systems patients can choose: every health system in Epic's published list (src/epicBrands.json, made by
+// scripts/epic-brands.mjs from open.epic.com's "R4 Endpoints as a Brands File"; the list is built into the app, as
+// Epic asks, rather than looked up while it runs), plus Epic's test system. A system's id is its address and name,
+// so saved automatic updates keep pointing at the same one when the list is refreshed. build.mjs allows the page to
+// contact each of these addresses.
+const STATE_NAMES = { AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California", CO: "Colorado", CT: "Connecticut",
+  DE: "Delaware", DC: "Washington, DC", FL: "Florida", GA: "Georgia", HI: "Hawaii", ID: "Idaho", IL: "Illinois", IN: "Indiana", IA: "Iowa",
+  KS: "Kansas", KY: "Kentucky", LA: "Louisiana", ME: "Maine", MD: "Maryland", MA: "Massachusetts", MI: "Michigan", MN: "Minnesota",
+  MS: "Mississippi", MO: "Missouri", MT: "Montana", NE: "Nebraska", NV: "Nevada", NH: "New Hampshire", NJ: "New Jersey", NM: "New Mexico",
+  NY: "New York", NC: "North Carolina", ND: "North Dakota", OH: "Ohio", OK: "Oklahoma", OR: "Oregon", PA: "Pennsylvania", RI: "Rhode Island",
+  SC: "South Carolina", SD: "South Dakota", TN: "Tennessee", TX: "Texas", UT: "Utah", VT: "Vermont", VA: "Virginia", WA: "Washington",
+  WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming", PR: "Puerto Rico" };
 const HEALTH_SYSTEMS = [
-  {
-    id: "uab",
-    name: "UAB Medicine",
-    note: "Birmingham, Alabama: UAB Hospital, The Kirklin Clinic, St. Vincent's and other UAB locations",
-    fhirBase: "https://epicproxy.et1460.epichosted.com/APIPROXYPRD/api/FHIR/R4/",
-  },
   {
     id: "epic-sandbox",
     name: "Epic test system",
@@ -2880,7 +2883,16 @@ const HEALTH_SYSTEMS = [
     fhirBase: "https://fhir.epic.com/interconnect-fhir-oauth/api/FHIR/R4/",
     sandbox: true,
   },
+  ...EPIC_BRANDS.b.map(([name, states, i]) => ({
+    id: `${EPIC_BRANDS.e[i]}#${name}`,
+    name,
+    note: states ? states.split("/").map((st) => STATE_NAMES[st] || st).join(", ") : "",
+    fhirBase: EPIC_BRANDS.e[i],
+  })),
 ];
+// Search that ignores case, accents and punctuation ("St. Vincent's" matches "st vincents").
+const searchText = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+const SYSTEM_SEARCH = HEALTH_SYSTEMS.map((s) => searchText(`${s.name} ${s.note}`));
 const CONNECT_KEY = "fabry-tracker-connect";
 const DEV_CLIENT_KEY = "fabry-tracker-dev-client-id"; // lets a developer test before the client ID is built in
 const epicClientId = (system) => {
@@ -3350,15 +3362,23 @@ function ConnectWizard({ connect, setConnect, region, units, profile, personName
       </>
     );
   } else if (stage === "system") {
-    const q = search.trim().toLowerCase();
-    const list = HEALTH_SYSTEMS.filter((s) => !q || `${s.name} ${s.note || ""}`.toLowerCase().includes(q));
+    // With over a thousand health systems, the list shows matches for what's typed (every word must match),
+    // at most 40 at a time, always keeping the one already chosen.
+    const words = searchText(search).split(" ").filter(Boolean);
+    const matches = words.length
+      ? HEALTH_SYSTEMS.filter((s, i) => words.every((w) => SYSTEM_SEARCH[i].includes(w))) : [];
+    const shown = matches.slice(0, 40);
+    const list = system && !shown.includes(system) ? [system, ...shown] : shown;
     body = (
       <>
         <h2 className="text-2xl font-bold mb-2">Choose your health system</h2>
-        <p className="text-base mb-3">Pick the health system whose MyChart you use.</p>
-        {HEALTH_SYSTEMS.length > 6 && (
-          <input className={inputCls + " mb-3"} style={inputStyle} placeholder="Search by name or city" aria-label="Search health systems"
-            value={search} onChange={(e) => setSearch(e.target.value)} />
+        <p className="text-base mb-3">Type the name of the hospital or clinic whose MyChart you use, or its state.</p>
+        <input className={inputCls + " mb-3"} style={inputStyle} placeholder="For example: UAB, Mayo Clinic, Texas" aria-label="Search health systems"
+          value={search} onChange={(e) => setSearch(e.target.value)} autoFocus />
+        {matches.length > shown.length && (
+          <p className="text-sm mb-2" style={{ color: C.muted }}>
+            {`${matches.length} health systems match. Type more of the name to narrow the list.`}
+          </p>
         )}
         <div className="mb-3" role="radiogroup" aria-label="Health systems">
           {list.map((s) => {
@@ -3375,10 +3395,10 @@ function ConnectWizard({ connect, setConnect, region, units, profile, personName
               </label>
             );
           })}
-          {list.length === 0 && <p className="text-base" style={{ color: C.muted }}>No health systems match that search.</p>}
+          {list.length === 0 && words.length > 0 && <p className="text-base" style={{ color: C.muted }}>No health systems match that search.</p>}
         </div>
         <p className="text-sm mb-5" style={{ color: C.muted }}>
-          Don't see yours? Only the health systems listed here are connected so far. You can still add your results on the Add tab.
+          Don't see yours? Only health systems that use Epic's MyChart are listed. You can still add your results on the Add tab.
         </p>
         <div className="flex gap-2">
           <Button kind="secondary" onClick={() => go("intro")}>Back</Button>
