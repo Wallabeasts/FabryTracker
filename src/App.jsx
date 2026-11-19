@@ -10,6 +10,7 @@ import { checkPassword } from "./passwords.js";
 import { NATIVE_APP, IOS_APP, saveFileInApp, healthAvailable, healthConnect, healthRead, watchStatus, watchSetup, watchPending, watchClear, nativeBioReason, nativeBioDevice, PORTAL_REDIRECT, nativePortalSignIn, nativeHttp, saveBinaryInApp, ANDROID_APP, portalKeyPublic, portalKeySign, portalKeyRemove } from "./native.js";
 import { makeTrendsPdf } from "./trendsPdf.js";
 import { mapVitals } from "./recordImport.js";
+import EPIC_BRANDS from "./epicBrands.json";
 import { makeVoiceParser } from "./voice.js";
 import { labInfo } from "./labInfo.js";
 import { ALERT_EVERY_DAYS, alertDue, cleanWatch, countryName, countryOptions, fetchEnrolling, matchTrials } from "./trialAlerts.js";
@@ -2855,24 +2856,47 @@ function AppleWatchCard() {
 // The patient signs in on their health system's own MyChart page. The app gets read-only access,
 // downloads their lab results straight to this device, and never stores the access token.
 const EPIC = {
-  // Non-production client ID from fhir.epic.com while testing, production client ID when live.
-  // Empty means the connection isn't switched on yet: patients can read the steps but can't sign in.
-  clientId: "4e67c358-b85d-4cbe-986f-1d755a4a51cf", // Non-Production (Epic sandbox) client ID of the "My Rare Disease Tracker" registration (appId 65257). Production ID: eeef3b2a-1c70-420f-b6ee-ba2d70b1a2be
+  // Client IDs of the "My Rare Disease Tracker" registration on fhir.epic.com (appId 65257). Real health systems use
+  // the production ID; Epic's test system (marked `sandbox` below) uses the non-production one, so testing with
+  // Epic's sample patients keeps working.
+  clientId: "eeef3b2a-1c70-420f-b6ee-ba2d70b1a2be",
+  sandboxClientId: "4e67c358-b85d-4cbe-986f-1d755a4a51cf",
   scope: "launch/patient openid fhirUser patient/Patient.read patient/Observation.read",
 };
-// Health systems patients can choose. Add production systems from Epic's published list of patient-access
-// endpoints. build.mjs allows the page to contact each fhirBase listed here.
+// Health systems patients can choose: every health system in Epic's published list (src/epicBrands.json, made by
+// scripts/epic-brands.mjs from open.epic.com's "R4 Endpoints as a Brands File"; the list is built into the app, as
+// Epic asks, rather than looked up while it runs), plus Epic's test system. A system's id is its address and name,
+// so saved automatic updates keep pointing at the same one when the list is refreshed. build.mjs allows the page to
+// contact each of these addresses.
+const STATE_NAMES = { AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California", CO: "Colorado", CT: "Connecticut",
+  DE: "Delaware", DC: "Washington, DC", FL: "Florida", GA: "Georgia", HI: "Hawaii", ID: "Idaho", IL: "Illinois", IN: "Indiana", IA: "Iowa",
+  KS: "Kansas", KY: "Kentucky", LA: "Louisiana", ME: "Maine", MD: "Maryland", MA: "Massachusetts", MI: "Michigan", MN: "Minnesota",
+  MS: "Mississippi", MO: "Missouri", MT: "Montana", NE: "Nebraska", NV: "Nevada", NH: "New Hampshire", NJ: "New Jersey", NM: "New Mexico",
+  NY: "New York", NC: "North Carolina", ND: "North Dakota", OH: "Ohio", OK: "Oklahoma", OR: "Oregon", PA: "Pennsylvania", RI: "Rhode Island",
+  SC: "South Carolina", SD: "South Dakota", TN: "Tennessee", TX: "Texas", UT: "Utah", VT: "Vermont", VA: "Virginia", WA: "Washington",
+  WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming", PR: "Puerto Rico" };
 const HEALTH_SYSTEMS = [
   {
     id: "epic-sandbox",
     name: "Epic test system",
     note: "For testing with Epic's sample patients",
     fhirBase: "https://fhir.epic.com/interconnect-fhir-oauth/api/FHIR/R4/",
+    sandbox: true,
   },
+  ...EPIC_BRANDS.b.map(([name, states, i]) => ({
+    id: `${EPIC_BRANDS.e[i]}#${name}`,
+    name,
+    note: states ? states.split("/").map((st) => STATE_NAMES[st] || st).join(", ") : "",
+    fhirBase: EPIC_BRANDS.e[i],
+  })),
 ];
+// Search that ignores case, accents and punctuation ("St. Vincent's" matches "st vincents").
+const searchText = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+const SYSTEM_SEARCH = HEALTH_SYSTEMS.map((s) => searchText(`${s.name} ${s.note}`));
 const CONNECT_KEY = "fabry-tracker-connect";
 const DEV_CLIENT_KEY = "fabry-tracker-dev-client-id"; // lets a developer test before the client ID is built in
-const epicClientId = () => {
+const epicClientId = (system) => {
+  if (system && system.sandbox && EPIC.sandboxClientId) return EPIC.sandboxClientId;
   if (EPIC.clientId) return EPIC.clientId;
   try { return window.localStorage.getItem(DEV_CLIENT_KEY) || ""; } catch (e) { return ""; }
 };
@@ -3017,7 +3041,7 @@ async function startSignIn(system, onBack) {
   const q = new URLSearchParams({
     // The iPhone app also asks for offline access, so MyChart lets the patient choose how long it may keep updating
     // (see registerAutoUpdate). The website asks only for this one visit.
-    response_type: "code", client_id: epicClientId(), redirect_uri: appAddress(), scope: IOS_APP ? `${EPIC.scope} offline_access` : EPIC.scope, state,
+    response_type: "code", client_id: epicClientId(system), redirect_uri: appAddress(), scope: IOS_APP ? `${EPIC.scope} offline_access` : EPIC.scope, state,
     aud: system.fhirBase, code_challenge: challenge, code_challenge_method: "S256",
   });
   const signInUrl = `${cfg.authorization_endpoint}?${q.toString()}`;
@@ -3060,7 +3084,7 @@ async function finishSignIn(fromApp) {
     headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
     body: new URLSearchParams({
       grant_type: "authorization_code", code: q.get("code") || "", redirect_uri: saved.redirectUri,
-      client_id: epicClientId(), code_verifier: saved.verifier,
+      client_id: epicClientId(system), code_verifier: saved.verifier,
     }).toString(),
   }, system.name);
   if (!token.access_token || !token.patient) throw new Error(`${system.name} didn't grant access to your record`);
@@ -3166,7 +3190,7 @@ async function registerAutoUpdate(system, token, tokenEndpoint, registerEndpoint
       res = await nativeHttp(registerEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json", Authorization: `Bearer ${token.access_token}` },
-        body: JSON.stringify({ software_id: epicClientId(), jwks: { keys: [{ kty: "RSA", n: jwk.n, e: jwk.e }] } }),
+        body: JSON.stringify({ software_id: epicClientId(system), jwks: { keys: [{ kty: "RSA", n: jwk.n, e: jwk.e }] } }),
       });
     } catch (e) {
       throw new Error(`${system.name} couldn't be reached`);
@@ -3338,15 +3362,23 @@ function ConnectWizard({ connect, setConnect, region, units, profile, personName
       </>
     );
   } else if (stage === "system") {
-    const q = search.trim().toLowerCase();
-    const list = HEALTH_SYSTEMS.filter((s) => !q || `${s.name} ${s.note || ""}`.toLowerCase().includes(q));
+    // With over a thousand health systems, the list shows matches for what's typed (every word must match),
+    // at most 40 at a time, always keeping the one already chosen.
+    const words = searchText(search).split(" ").filter(Boolean);
+    const matches = words.length
+      ? HEALTH_SYSTEMS.filter((s, i) => words.every((w) => SYSTEM_SEARCH[i].includes(w))) : [];
+    const shown = matches.slice(0, 40);
+    const list = system && !shown.includes(system) ? [system, ...shown] : shown;
     body = (
       <>
         <h2 className="text-2xl font-bold mb-2">Choose your health system</h2>
-        <p className="text-base mb-3">Pick the health system whose MyChart you use.</p>
-        {HEALTH_SYSTEMS.length > 6 && (
-          <input className={inputCls + " mb-3"} style={inputStyle} placeholder="Search by name or city" aria-label="Search health systems"
-            value={search} onChange={(e) => setSearch(e.target.value)} />
+        <p className="text-base mb-3">Type the name of the hospital or clinic whose MyChart you use, or its state.</p>
+        <input className={inputCls + " mb-3"} style={inputStyle} placeholder="For example: UAB, Mayo Clinic, Texas" aria-label="Search health systems"
+          value={search} onChange={(e) => setSearch(e.target.value)} autoFocus />
+        {matches.length > shown.length && (
+          <p className="text-sm mb-2" style={{ color: C.muted }}>
+            {`${matches.length} health systems match. Type more of the name to narrow the list.`}
+          </p>
         )}
         <div className="mb-3" role="radiogroup" aria-label="Health systems">
           {list.map((s) => {
@@ -3363,10 +3395,10 @@ function ConnectWizard({ connect, setConnect, region, units, profile, personName
               </label>
             );
           })}
-          {list.length === 0 && <p className="text-base" style={{ color: C.muted }}>No health systems match that search.</p>}
+          {list.length === 0 && words.length > 0 && <p className="text-base" style={{ color: C.muted }}>No health systems match that search.</p>}
         </div>
         <p className="text-sm mb-5" style={{ color: C.muted }}>
-          Don't see yours? Only the health systems listed here are connected so far. You can still add your results on the Add tab.
+          Don't see yours? Only health systems that use Epic's MyChart are listed. You can still add your results on the Add tab.
         </p>
         <div className="flex gap-2">
           <Button kind="secondary" onClick={() => go("intro")}>Back</Button>
