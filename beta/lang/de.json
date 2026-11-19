@@ -3085,5 +3085,11 @@
   "Diagramme exportieren (PDF)",
   "Ein PDF Ihrer Diagramme lässt sich am einfachsten drucken oder zu Terminen mitnehmen.",
   "PDF-Dateien können nicht gesperrt werden",
-  "PDF sichern"
+  "PDF sichern",
+  "Erneut anmelden",
+  "Details für den Support",
+  "Eine erneute Anmeldung behebt das meistens. Automatische Aktualisierungen bleiben vorerst aus; es wurde nichts hinzugefügt und nichts ist verloren gegangen.",
+  "Wenn Sie Ergebnisse erwartet haben, melden Sie sich noch einmal an, um erneut nachzusehen. Automatische Aktualisierungen bleiben vorerst aus.",
+  "Beim letzten Mal wurde die Verbindung zu {0} vorzeitig abgebrochen, daher wurde nichts hinzugefügt. Bitte versuchen Sie es erneut.",
+  "{0} hat diesmal keine Laborergebnisse gesendet. Bitte versuchen Sie es in ein paar Minuten erneut; passiert es wieder, werden die Ergebnisse möglicherweise noch nicht mit Apps geteilt."
 ]

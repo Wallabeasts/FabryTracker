@@ -3085,5 +3085,11 @@
   "Exportar gráficas (PDF)",
   "Un PDF de sus gráficas es lo más fácil para imprimir o llevar a sus citas.",
   "Los archivos PDF no se pueden bloquear",
-  "Guardar PDF"
+  "Guardar PDF",
+  "Iniciar sesión de nuevo",
+  "Detalles para soporte",
+  "Iniciar sesión una vez más suele resolverlo. Las actualizaciones automáticas quedan desactivadas por ahora; no se ha añadido ni perdido nada.",
+  "Si esperaba resultados, inicie sesión una vez más para comprobarlo de nuevo. Las actualizaciones automáticas quedan desactivadas por ahora.",
+  "La última vez, la conexión con {0} se detuvo antes de terminar, por lo que no se añadió nada. Inténtelo de nuevo.",
+  "{0} no envió ningún resultado de laboratorio esta vez. Inténtelo de nuevo en unos minutos; si vuelve a ocurrir, es posible que los resultados aún no se compartan con aplicaciones."
 ]

@@ -3085,5 +3085,11 @@
   "Esporta grafici (PDF)",
   "Un PDF dei tuoi grafici è il modo più semplice per stamparli o portarli alle visite.",
   "I file PDF non possono essere protetti",
-  "Salva PDF"
+  "Salva PDF",
+  "Accedi di nuovo",
+  "Dettagli per l'assistenza",
+  "Di solito basta accedere ancora una volta. Gli aggiornamenti automatici restano disattivati per ora; non è stato aggiunto né perso nulla.",
+  "Se si aspettava dei risultati, acceda ancora una volta per ricontrollare. Gli aggiornamenti automatici restano disattivati per ora.",
+  "L'ultima volta, la connessione a {0} si è interrotta prima della fine, quindi non è stato aggiunto nulla. Riprovi.",
+  "{0} non ha inviato alcun risultato di laboratorio questa volta. Riprovi tra qualche minuto; se succede di nuovo, è possibile che i risultati non siano ancora condivisi con le app."
 ]

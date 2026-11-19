@@ -2894,6 +2894,32 @@ const HEALTH_SYSTEMS = [
 const searchText = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 const SYSTEM_SEARCH = HEALTH_SYSTEMS.map((s) => searchText(`${s.name} ${s.note}`));
 const CONNECT_KEY = "fabry-tracker-connect";
+// The steps of the latest connection attempt, kept on this device so the screen can say where a connection stopped
+// (also after the app was closed part-way). It holds no health information: only step names, the health system's
+// name, status numbers and the health system's own error words.
+const TRAIL_KEY = "fabry-tracker-connect-trail";
+const readTrail = () => {
+  try { const t = JSON.parse(window.localStorage.getItem(TRAIL_KEY)); return t && Array.isArray(t.steps) ? t : null; } catch (e) { return null; }
+};
+const saveTrail = (t) => { try { window.localStorage.setItem(TRAIL_KEY, JSON.stringify(t)); } catch (e) { /* storage blocked */ } };
+const startTrail = (systemName) => saveTrail({ at: Date.now(), system: systemName, steps: [], done: false });
+const trail = (step, done) => {
+  const t = readTrail();
+  if (!t) return;
+  t.steps = [...t.steps, String(step).slice(0, 200)].slice(-30);
+  if (done) t.done = true;
+  saveTrail(t);
+};
+const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+// The health system's own words for why it refused, from the body of an error answer.
+const refusalText = (text) => {
+  let j = null;
+  try { j = JSON.parse(text); } catch (e) { return ""; }
+  if (!j || typeof j !== "object") return "";
+  const issue = j.resourceType === "OperationOutcome" ? (j.issue || [])[0] : null;
+  const why = issue ? ((issue.details && issue.details.text) || issue.diagnostics || issue.code) : (j.error_description || j.error);
+  return why ? String(why).slice(0, 140) : "";
+};
 const DEV_CLIENT_KEY = "fabry-tracker-dev-client-id"; // lets a developer test before the client ID is built in
 const epicClientId = (system) => {
   if (system && system.sandbox && EPIC.sandboxClientId) return EPIC.sandboxClientId;
@@ -3003,10 +3029,13 @@ async function fetchJSON(url, options = {}, what = "your health system") {
     try {
       r = await nativeHttp(url, { method: options.method || "GET", headers: options.headers || {}, body: options.body || "" });
     } catch (e) {
-      throw new Error(e.message === "timeout" ? `${what} took too long to answer` : `${what} couldn't be reached`);
+      throw Object.assign(new Error(e.message === "timeout" ? `${what} took too long to answer` : `${what} couldn't be reached`), { network: true });
     }
-    if (r.status < 200 || r.status >= 300) throw new Error(`${what} answered with an error (${r.status})`);
-    try { return JSON.parse(r.text); } catch (e) { throw new Error(`${what} answered with an error (${r.status})`); }
+    if (r.status < 200 || r.status >= 300) {
+      const why = refusalText(r.text);
+      throw Object.assign(new Error(`${what} answered with an error (${r.status}${why ? `: ${why}` : ""})`), { status: r.status });
+    }
+    try { return JSON.parse(r.text); } catch (e) { throw Object.assign(new Error(`${what} sent an answer the app couldn't read`), { status: r.status }); }
   }
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 20000);
@@ -3014,18 +3043,25 @@ async function fetchJSON(url, options = {}, what = "your health system") {
   try {
     res = await fetch(url, { ...options, signal: ctrl.signal });
   } catch (e) {
-    throw new Error(e.name === "AbortError" ? `${what} took too long to answer` : `${what} couldn't be reached`);
+    throw Object.assign(new Error(e.name === "AbortError" ? `${what} took too long to answer` : `${what} couldn't be reached`), { network: true });
   } finally {
     clearTimeout(timer);
   }
-  if (!res.ok) throw new Error(`${what} answered with an error (${res.status})`);
-  return res.json();
+  if (!res.ok) {
+    const why = refusalText(await res.text().catch(() => ""));
+    throw Object.assign(new Error(`${what} answered with an error (${res.status}${why ? `: ${why}` : ""})`), { status: res.status });
+  }
+  try { return await res.json(); } catch (e) { throw Object.assign(new Error(`${what} sent an answer the app couldn't read`), { status: res.status }); }
 }
 
 // Step 1 of sign-in: send the patient to their health system's MyChart login page.
 // Inside the phone apps the page stays put: the sign-in opens over it, and when the patient comes back this goes
 // straight on to step 2 (onBack is called first) and returns what was found.
-async function startSignIn(system, onBack) {
+// `plain` asks only for this one visit (no automatic updates). It is the simplest connection, used for a second try
+// when setting up automatic updates got in the way of reading the results.
+async function startSignIn(system, onBack, plain) {
+  startTrail(system.name);
+  trail(plain ? "Started (this visit only)" : "Started");
   const cfg = await fetchJSON(`${withSlash(system.fhirBase)}.well-known/smart-configuration`, {}, system.name);
   if (!isWebLink(cfg.authorization_endpoint) || !isWebLink(cfg.token_endpoint)) {
     throw new Error(`${system.name}'s sign-in details couldn't be read`);
@@ -3037,16 +3073,19 @@ async function startSignIn(system, onBack) {
     : cfg.token_endpoint.replace(/\/token\/?$/, "/register");
   sessionStorage.setItem(CONNECT_KEY, JSON.stringify({
     state, verifier, systemId: system.id, tokenEndpoint: cfg.token_endpoint, registerEndpoint, redirectUri: appAddress(),
+    plain: Boolean(plain),
   }));
   const q = new URLSearchParams({
     // The iPhone app also asks for offline access, so MyChart lets the patient choose how long it may keep updating
     // (see registerAutoUpdate). The website asks only for this one visit.
-    response_type: "code", client_id: epicClientId(system), redirect_uri: appAddress(), scope: IOS_APP ? `${EPIC.scope} offline_access` : EPIC.scope, state,
+    response_type: "code", client_id: epicClientId(system), redirect_uri: appAddress(), scope: IOS_APP && !plain ? `${EPIC.scope} offline_access` : EPIC.scope, state,
     aud: system.fhirBase, code_challenge: challenge, code_challenge_method: "S256",
   });
   const signInUrl = `${cfg.authorization_endpoint}?${q.toString()}`;
+  trail("Opening the MyChart sign-in page");
   if (NATIVE_APP) {
     const back = await nativePortalSignIn(signInUrl);
+    trail("Back from MyChart");
     if (onBack) onBack();
     let search = "";
     try { search = new URL(back).search; } catch (e) { search = ""; }
@@ -3088,40 +3127,71 @@ async function finishSignIn(fromApp) {
     }).toString(),
   }, system.name);
   if (!token.access_token || !token.patient) throw new Error(`${system.name} didn't grant access to your record`);
+  trail("Signed in: pass received");
 
-  // In the iPhone app, also set up automatic updates (see registerAutoUpdate). If that isn't possible, the sign-in
-  // still works as before and the patient signs in again next time.
+  // In the iPhone app, also set up automatic updates (see registerAutoUpdate). Epic then expects the results to be
+  // read with the automatic-update pass: the pass from the sign-in itself is meant for setting this up. If that
+  // isn't possible, the results are read with the sign-in pass and the patient signs in again next time.
+  // `notes` collects anything that went wrong on the way, in plain words, for the screen.
+  const notes = [];
   let link = null;
   let linkError = "";
-  let accessToken = token.access_token;
-  if (IOS_APP && saved.registerEndpoint) {
-    link = await registerAutoUpdate(system, token, saved.tokenEndpoint, saved.registerEndpoint)
-      .catch((e) => { linkError = (e && e.message) || "unknown problem"; return null; });
+  let autoPass = "";
+  const wantLink = IOS_APP && saved.registerEndpoint && !saved.plain;
+  if (wantLink) {
+    try {
+      link = await registerAutoUpdate(system, token, saved.tokenEndpoint, saved.registerEndpoint);
+      trail("This phone was registered for automatic updates");
+    } catch (e) {
+      linkError = (e && e.message) || "unknown problem";
+      trail(`Registering for automatic updates failed: ${linkError}`);
+    }
     if (link) {
-      // The first pass may only be good for setting this up, so the results are read with a new one.
-      const fresh = await autoUpdateToken(link).catch(() => null);
-      if (fresh && fresh.access_token) accessToken = fresh.access_token;
+      // A phone that was registered a moment ago is sometimes refused at first, so this is tried up to three times.
+      let why = "";
+      for (let attempt = 0; attempt < 3 && !autoPass; attempt++) {
+        if (attempt) await pause(attempt === 1 ? 800 : 2500);
+        try {
+          const fresh = await autoUpdateToken(link);
+          autoPass = fresh.access_token;
+        } catch (e) {
+          why = (e && e.detail) || (e && e.message) || "unknown problem";
+          trail(`Automatic-update pass, try ${attempt + 1}: ${why}`);
+        }
+      }
+      if (autoPass) {
+        trail("Automatic-update pass received");
+      } else {
+        // A registration whose pass is refused can never bring results, so it isn't kept.
+        await portalKeyRemove(link.tag);
+        link = null;
+        linkError = `${system.name} refused the automatic-update pass (${why})`;
+      }
     }
   }
-  // Results are read with the automatic-update pass first. If that fails or comes back empty, they are read again
-  // with the pass from this sign-in, which is the one that worked before automatic updates were added.
+  // Read with the automatic-update pass when there is one, then with the sign-in pass if that failed or brought
+  // nothing. The reading that found the most results is used.
+  const passes = [...(autoPass ? [["automatic-update pass", autoPass]] : []), ["sign-in pass", token.access_token]];
   let result = null;
   let firstError = null;
-  try {
-    result = await downloadRecord(system, accessToken, token.patient);
-  } catch (e) {
-    if (accessToken === token.access_token) throw e;
-    firstError = e;
-  }
-  if (accessToken !== token.access_token && (!result || !result.totalLabs)) {
+  for (const [label, pass] of passes) {
     try {
-      const again = await downloadRecord(system, token.access_token, token.patient);
-      if (!result || again.totalLabs > result.totalLabs) result = again;
+      const r = await downloadRecord(system, pass, token.patient);
+      trail(`Read with the ${label}: ${r.totalLabs} results`);
+      if (!result || r.totalLabs > result.totalLabs) result = r;
+      if (r.totalLabs) break;
     } catch (e) {
-      if (!result) throw firstError || e;
+      notes.push(`Reading with the ${label}: ${e.message}`);
+      trail(`Reading with the ${label} failed: ${e.message}`);
+      if (!firstError) firstError = e;
     }
   }
-  return { ...result, link, linkError };
+  // When automatic updates were being set up and the results still didn't come, signing in once more for this visit
+  // only (the simplest connection) is offered: `retryPlain`.
+  if (!result) {
+    throw Object.assign(new Error(firstError.message), { network: Boolean(firstError.network), retryPlain: wantLink, notes });
+  }
+  return { ...result, link, linkError, notes, retryPlain: wantLink && !result.totalLabs };
 }
 
 // Reads the patient's details and lab results with an access token. Nothing is saved here.
@@ -3261,16 +3331,17 @@ async function autoUpdateToken(link) {
       }).toString(),
     });
   } catch (e) {
-    throw new Error("unreachable");
+    throw Object.assign(new Error("unreachable"), { detail: "the health system couldn't be reached" });
   }
   let json = null;
   try { json = JSON.parse(r.text); } catch (e) { json = null; }
   if (r.status >= 200 && r.status < 300 && json && json.access_token) return json;
   const code = (json && json.error) || "";
+  const detail = `answer ${r.status}${refusalText(r.text) ? `: ${refusalText(r.text)}` : code ? `: ${code}` : ""}`;
   if ([400, 401, 403].includes(r.status) && /invalid_grant|invalid_client|unauthorized_client|access_denied/.test(code)) {
-    throw Object.assign(new Error("ended"), { ended: true });
+    throw Object.assign(new Error("ended"), { ended: true, detail });
   }
-  throw new Error(`error ${r.status}`);
+  throw Object.assign(new Error(`error ${r.status}`), { detail });
 }
 
 // Reads the latest results for a saved link. Resolves with the same shape as finishSignIn (without `link`).
@@ -3336,17 +3407,37 @@ function ConnectWizard({ connect, setConnect, region, units, profile, personName
     return () => document.removeEventListener("keydown", onKey);
   }, [stage]);
 
+  // `plain`: the next sign-in is for this visit only, without setting up automatic updates (see startSignIn).
+  const [plain, setPlain] = useState(false);
   const signIn = async () => {
     go("signing");
     try {
-      const result = await startSignIn(system, () => setConnect({ stage: "working" }));
-      if (result) setConnect({ stage: "review", result });
+      const result = await startSignIn(system, () => setConnect({ stage: "working" }), plain);
+      if (result) {
+        trail(`Finished: ${result.totalLabs} results read`, true);
+        setConnect({ stage: "review", result });
+      }
     } catch (e) {
       // Closing the sign-in page in the app just goes back a step.
-      if (e.cancelled) { setConnect({ stage: "prepare" }); return; }
-      setConnect({ stage: "error", error: `${e.message}. Check your internet connection and try again.` });
+      if (e.cancelled) { trail("The sign-in page was closed", true); setConnect({ stage: "prepare" }); return; }
+      trail(`Stopped: ${e.message}`, true);
+      setConnect({ stage: "error", retryPlain: Boolean(e.retryPlain) && !plain,
+        error: e.network ? `${e.message}. Check your internet connection and try again.` : `${String(e.message).replace(/\.$/, "")}.` });
     }
   };
+  const signInAgainPlain = () => { setPlain(true); setConnect({ stage: "prepare" }); };
+  // What happened in the latest attempt, for the person to read out or send if something went wrong.
+  const lastTrail = readTrail();
+  const trailDetails = lastTrail && lastTrail.steps.length > 0 && (
+    <details className="text-sm mb-4" style={{ color: C.muted }}>
+      <summary className="font-bold" style={{ cursor: "pointer" }}>Details for support</summary>
+      <ol className="mt-2" style={{ listStyle: "decimal", paddingInlineStart: 20 }}>
+        {lastTrail.steps.map((t, k) => <li key={k} className="mb-1">{t}</li>)}
+      </ol>
+    </details>
+  );
+  // An attempt that never reached its end: the app was closed or restarted part-way.
+  const unfinished = lastTrail && !lastTrail.done && lastTrail.steps.length > 0;
 
   let body;
   if (stage === "europe") {
@@ -3364,6 +3455,14 @@ function ConnectWizard({ connect, setConnect, region, units, profile, personName
     body = (
       <>
         <h2 className="text-2xl font-bold mb-2">Bring in your lab results</h2>
+        {unfinished && (
+          <div className="p-3 mb-4 rounded-md" role="status" style={{ background: C.subtle, border: `1px solid ${C.line}` }}>
+            <p className="text-sm mb-2">
+              {`Last time, the connection to ${dyn(lastTrail.system)} stopped before it finished, so nothing was added. Please try again.`}
+            </p>
+            {trailDetails}
+          </div>
+        )}
         <p className="text-base mb-4">
           If your health system uses Epic MyChart, you can copy your lab results into {APP_INFO.name} instead of typing them.
         </p>
@@ -3502,7 +3601,7 @@ function ConnectWizard({ connect, setConnect, region, units, profile, personName
           <p className="text-base mb-3 p-3 rounded-md" style={{ background: C.subtle }}>
             {r.totalLabs
               ? `No new results for ${APP_INFO.name}'s charts were found.`
-              : `${r.systemName} didn't send any lab results this time. Please try again in a few minutes; if it happens again, the results may not be shared with apps yet.`}
+              : `${dyn(r.systemName)} didn't send any lab results this time. Please try again in a few minutes; if it happens again, the results may not be shared with apps yet.`}
           </p>
         )}
         {already > 0 && <p className="text-sm mb-1" style={{ color: C.muted }}>{already} results were already added before and will be skipped.</p>}
@@ -3521,6 +3620,14 @@ function ConnectWizard({ connect, setConnect, region, units, profile, personName
             {r.skipped.length} results were left out because they weren't final yet or used a unit the app can't convert.
           </p>
         )}
+        {(r.notes || []).map((n) => <p key={n} className="text-sm mb-1" style={{ color: C.muted }}>{n}.</p>)}
+        {!r.totalLabs && r.retryPlain && !plain && (
+          <div className="p-3 mt-3 rounded-md" style={{ background: C.subtle, border: `1px solid ${C.line}` }}>
+            <p className="text-sm mb-2">If you expected results, sign in once more to check again. Automatic updates stay off for now.</p>
+            <Button onClick={() => { if (r.link && onUnlink) onUnlink(r.link); signInAgainPlain(); }}>Sign in again</Button>
+          </div>
+        )}
+        {!r.totalLabs && <div className="mt-3">{trailDetails}</div>}
         {needProfile && (
           <label className="flex items-start gap-2 mt-3 text-sm">
             <input type="checkbox" checked={useProfile} onChange={(e) => setUseProfile(e.target.checked)} className="mt-1"
@@ -3576,9 +3683,15 @@ function ConnectWizard({ connect, setConnect, region, units, profile, personName
     body = (
       <>
         <h2 className="text-2xl font-bold mb-2">The connection didn't work</h2>
-        <p className="text-base mb-5" role="alert">{connect.error}</p>
+        <p className="text-base mb-4" role="alert">{connect.error}</p>
+        {connect.retryPlain && (
+          <p className="text-base mb-4">Signing in once more usually fixes this. Automatic updates stay off for now; nothing has been added or lost.</p>
+        )}
+        {trailDetails}
         <div className="flex gap-2">
-          <Button onClick={() => setConnect({ stage: "system" })}>Try again</Button>
+          {connect.retryPlain && system
+            ? <Button onClick={signInAgainPlain}>Sign in again</Button>
+            : <Button onClick={() => setConnect({ stage: "system" })}>Try again</Button>}
           <Button kind="secondary" onClick={onClose}>Close</Button>
         </div>
       </>
@@ -7182,16 +7295,15 @@ export default function App() {
   }, [stage]);
   useEffect(() => {
     if (stage !== "open") return;
+    // When the app went to the background is remembered by the open page itself. (It used to be a saved note, and
+    // a note left over from an earlier visit could lock the app at the wrong moment.)
+    try { window.localStorage.removeItem(LOCK_AT_KEY); } catch (e) { /* storage blocked */ }
+    let hiddenAt = 0;
     const onVis = () => {
-      try {
-        if (document.visibilityState === "hidden") {
-          window.localStorage.setItem(LOCK_AT_KEY, String(Date.now()));
-        } else {
-          const at = Number(window.localStorage.getItem(LOCK_AT_KEY) || 0);
-          window.localStorage.removeItem(LOCK_AT_KEY);
-          if (at && Date.now() - at > AUTO_LOCK_MINUTES * 60000) lockNow();
-        }
-      } catch (e) { /* storage blocked */ }
+      if (document.visibilityState === "hidden") { hiddenAt = Date.now(); return; }
+      const at = hiddenAt;
+      hiddenAt = 0;
+      if (at && Date.now() - at > AUTO_LOCK_MINUTES * 60000) lockNow();
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
@@ -7261,8 +7373,8 @@ function FabryTracker() {
   useEffect(() => {
     if (!isReturnFromSignIn()) return;
     finishSignIn()
-      .then((result) => setConnect({ stage: "review", result }))
-      .catch((e) => setConnect({ stage: "error", error: e.message }));
+      .then((result) => { trail(`Finished: ${result.totalLabs} results read`, true); setConnect({ stage: "review", result }); })
+      .catch((e) => { trail(`Stopped: ${e.message}`, true); setConnect({ stage: "error", error: e.message }); });
   }, []);
   const [leaving, setLeaving] = useState(false);
   const [popped, setPopped] = useState("");

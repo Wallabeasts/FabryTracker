@@ -3085,5 +3085,11 @@
   "Exportar gráficos (PDF)",
   "Um PDF dos seus gráficos é o mais fácil para imprimir ou levar às consultas.",
   "Arquivos PDF não podem ser bloqueados",
-  "Salvar PDF"
+  "Salvar PDF",
+  "Entrar novamente",
+  "Detalhes para o suporte",
+  "Entrar mais uma vez costuma resolver. As atualizações automáticas ficam desativadas por enquanto; nada foi adicionado nem perdido.",
+  "Se você esperava resultados, entre mais uma vez para verificar de novo. As atualizações automáticas ficam desativadas por enquanto.",
+  "Da última vez, a conexão com {0} parou antes de terminar, então nada foi adicionado. Tente novamente.",
+  "{0} não enviou nenhum resultado de exame desta vez. Tente novamente em alguns minutos; se acontecer de novo, talvez os resultados ainda não sejam compartilhados com aplicativos."
 ]
