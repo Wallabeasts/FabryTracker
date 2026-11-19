@@ -3103,7 +3103,7 @@ async function finishSignIn(fromApp) {
       if (fresh && fresh.access_token) accessToken = fresh.access_token;
     }
   }
-  // Results are read with the automatic-update pass first. If that fails or comes back empty, they are read again
+  // Results are read with the automatic-update pass first. If that fails or brings no labs, the labs are read again
   // with the pass from this sign-in, which is the one that worked before automatic updates were added.
   let result = null;
   let firstError = null;
@@ -3113,10 +3113,17 @@ async function finishSignIn(fromApp) {
     if (accessToken === token.access_token) throw e;
     firstError = e;
   }
-  if (accessToken !== token.access_token && (!result || !result.totalLabs)) {
+  if (accessToken !== token.access_token && (!result || !result.labCount)) {
     try {
-      const again = await downloadRecord(system, token.access_token, token.patient);
-      if (!result || again.totalLabs > result.totalLabs) result = again;
+      const again = await downloadRecord(system, token.access_token, token.patient, { vitals: !(result && result.vitalCount) });
+      if (result && result.vitalCount && again.labCount) {
+        // Labs from this pass, vital signs from the first one.
+        const vit = result.entries.filter((e) => VITAL_IDS.has(e.metric));
+        again.entries = [...again.entries, ...vit];
+        again.vitalCount = result.vitalCount;
+        again.totalLabs = again.labCount + result.vitalCount;
+      }
+      if (!result || again.labCount > result.labCount || again.totalLabs > result.totalLabs) result = again;
     } catch (e) {
       if (!result) throw firstError || e;
     }
@@ -3125,7 +3132,10 @@ async function finishSignIn(fromApp) {
 }
 
 // Reads the patient's details and lab results with an access token. Nothing is saved here.
-async function downloadRecord(system, accessToken, patientId) {
+// Labs come first and are read in full. Vital signs are an extra, read only after the labs, for at most
+// VITALS_SECONDS: whatever has arrived by then is kept, so a slow health system never holds up the labs.
+const VITALS_SECONDS = 15;
+async function downloadRecord(system, accessToken, patientId, { vitals = true } = {}) {
   const base = withSlash(system.fhirBase);
   const origin = new URL(base).origin;
   const get = (url) => fetchJSON(url, { headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/fhir+json" } }, system.name);
@@ -3134,11 +3144,15 @@ async function downloadRecord(system, accessToken, patientId) {
   // example when the pass doesn't cover lab results. Those notes are kept so the patient sees the reason instead of
   // an empty result.
   const problems = [];
-  const searchAll = async (first, type, maxPages = 20) => {
+  const searchAll = async (first, type, maxPages = 20, deadline = Infinity) => {
     const found = [];
     let url = first;
     for (let page = 0; url && page < maxPages; page++) {
-      const bundle = await get(url);
+      const left = deadline - Date.now();
+      if (left <= 0) break;
+      const bundle = left === Infinity ? await get(url)
+        : await Promise.race([get(url), new Promise((resolve) => setTimeout(() => resolve(null), left))]);
+      if (!bundle) break; // out of time: keep what was found so far
       if (bundle && bundle.resourceType === "OperationOutcome") { problems.push(bundle); break; }
       (bundle.entry || []).forEach((e) => {
         if (!e.resource) return;
@@ -3152,14 +3166,11 @@ async function downloadRecord(system, accessToken, patientId) {
     return found;
   };
   const pid = encodeURIComponent(patientId);
-  // Vital signs are an extra, read alongside the labs with a time limit: if a health system is slow with them or
-  // doesn't share them, the lab results still come in.
-  const vitalsLater = Promise.race([
-    searchAll(`${base}Observation?patient=${pid}&category=vital-signs&_count=200`, "Observation", 5).catch(() => null),
-    new Promise((resolve) => setTimeout(() => resolve(null), 25000)),
-  ]);
   const observations = await searchAll(`${base}Observation?patient=${pid}&category=laboratory&_count=200`, "Observation");
-  const vitalObs = (await vitalsLater) || [];
+  const vitalObs = vitals
+    ? (await searchAll(`${base}Observation?patient=${pid}&category=vital-signs&_count=200`, "Observation", 5,
+      Date.now() + VITALS_SECONDS * 1000).catch(() => null)) || []
+    : [];
   if (!observations.length && !vitalObs.length) {
     const issue = problems.flatMap((p) => p.issue || []).find((i) => ["error", "fatal"].includes(i.severity));
     if (issue) {
@@ -3179,6 +3190,8 @@ async function downloadRecord(system, accessToken, patientId) {
       sex: patient.gender === "female" ? "Female" : patient.gender === "male" ? "Male" : "",
     },
     totalLabs: observations.length + vitalObs.length,
+    labCount: observations.length,
+    vitalCount: vitalObs.length,
     entries,
     skipped,
   };
