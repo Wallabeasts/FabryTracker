@@ -15,7 +15,9 @@ export const LANGS = [
   { id: "de", label: "Deutsch", locale: "de" },
   { id: "it", label: "Italiano", locale: "it" },
   { id: "pt", label: "Português", locale: "pt-BR" },
+  { id: "nb", label: "Norsk (bokmål)", locale: "nb" },
   { id: "zh", label: "简体中文", locale: "zh-CN" },
+  { id: "ja", label: "日本語", locale: "ja" },
   { id: "ar", label: "العربية", locale: "ar-u-nu-latn", rtl: true },
 ];
 
@@ -38,7 +40,8 @@ export function savedLang() {
   } catch (e) { /* storage blocked */ }
   try {
     for (const l of navigator.languages || [navigator.language]) {
-      const base = String(l).toLowerCase().split(/[-_@]/)[0];
+      let base = String(l).toLowerCase().split(/[-_@]/)[0];
+      if (base === "no" || base === "nn") base = "nb"; // Norwegian (any form) gets Bokmål
       if (LANGS.some((x) => x.id === base)) return base;
     }
   } catch (e) { /* fall through */ }

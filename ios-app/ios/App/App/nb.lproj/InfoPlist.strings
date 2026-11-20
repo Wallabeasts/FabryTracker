@@ -1,0 +1,5 @@
+/* My Rare Disease Tracker: name and permission messages in this language */
+"CFBundleDisplayName" = "My RDT";
+"NSFaceIDUsageDescription" = "Face ID åpner helsejournalen din uten at du skriver passordet. Ansiktsdataene dine blir på iPhonen.";
+"NSHealthShareUsageDescription" = "Hvis du kobler til Apple Helse, leser appen blodtrykk, hvilepuls, vekt og høyde og legger dem til i journalen din på denne iPhonen. Ingenting sendes til oss eller noen andre.";
+"NSHealthUpdateUsageDescription" = "My Rare Disease Tracker leser bare fra Apple Helse. Den skriver, endrer eller sletter aldri noe i Apple Helse.";
