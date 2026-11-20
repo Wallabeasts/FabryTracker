@@ -1915,7 +1915,7 @@ function EGFRChart({ entries, profile, meds, domain, onOpenProfile, onTable }) {
           )}
         </>
       )}
-      {onTable && <TableButton count={results.length} onClick={onTable} />}
+      {onTable && <TableButton count={results.length} onClick={onTable} add />}
     </section>
   );
 }
@@ -1974,7 +1974,7 @@ function MetricChart({ metric, entries, meds, domain, units, onTable }) {
         )
       )}
       {metric.note && <p className="text-xs mt-2" style={{ color: C.muted }}>{metric.note}</p>}
-      {onTable && <TableButton count={points.length} onClick={onTable} />}
+      {onTable && <TableButton count={points.length} onClick={onTable} add />}
     </section>
   );
 }
@@ -2021,7 +2021,7 @@ function ProcedureCard({ entries, onTable }) {
           {all ? "Show fewer" : `Show all ${list.length}`}
         </button>
       )}
-      {onTable && <TableButton count={list.length} onClick={onTable} />}
+      {onTable && <TableButton count={list.length} onClick={onTable} add />}
     </section>
   );
 }
@@ -2064,7 +2064,7 @@ function VisionCard({ entries, onTable }) {
           {all ? "Show fewer" : `Show all ${visits.length}`}
         </button>
       )}
-      {onTable && <TableButton count={visits.length} onClick={onTable} />}
+      {onTable && <TableButton count={visits.length} onClick={onTable} add />}
     </section>
   );
 }
@@ -2100,7 +2100,7 @@ function BMIChart({ entries, meds, domain, onTable }) {
         <TimeChart domain={domain} refY={{ value: 30, label: "30 (obesity)" }} series={[{ key: "bmi", name: "BMI", color: C.ink, points }]}
           meds={meds} formatValue={(v) => `${v} kg/m²`} label={`BMI over time, ${points.length} results, latest ${latest.v}`} />
       )}
-      {onTable && <TableButton count={points.length} onClick={onTable} />}
+      {onTable && <TableButton count={points.length} onClick={onTable} add />}
     </section>
   );
 }
@@ -2144,7 +2144,7 @@ function TiterChart({ metric, entries, meds, domain, onTable }) {
           <p className="text-xs mt-1" style={{ color: C.muted }}>Higher on the chart means more antibody. Each line up is ten times more.</p>
         </>
       )}
-      {onTable && <TableButton count={points.length} onClick={onTable} />}
+      {onTable && <TableButton count={points.length} onClick={onTable} add />}
     </section>
   );
 }
@@ -2206,7 +2206,7 @@ function HearingChart({ kind, entries, meds, domain, onTable }) {
           </div>
         </>
       )}
-      {onTable && <TableButton count={count} onClick={onTable} />}
+      {onTable && <TableButton count={count} onClick={onTable} add />}
     </section>
   );
 }
@@ -6019,21 +6019,24 @@ const PencilIcon = () => (
   </svg>
 );
 
-// The "View table" button under each trend chart.
-function TableButton({ count, onClick }) {
-  if (!count) return null;
+// The "View table" button under each trend chart. Where results can be added from the table, it says so.
+function TableButton({ count, onClick, add = false }) {
+  if (!count && !add) return null;
   return (
     <button onClick={onClick} className="mt-2 text-sm font-bold underline focus:outline-none focus:ring-2" style={{ color: C.accent }}>
-      View table ({count})
+      {!count ? <>+ Add a result</> : add ? <>View table or add results ({count})</> : <>View table ({count})</>}
     </button>
   );
 }
 
 // A spreadsheet-style list of one chart's values. Each row can be corrected (pencil) or deleted (trash can).
 // rows: [{ id, date, cells: { [colKey]: text }, what, edit: { fields, onSave }, onDelete }]
-function DataTableDialog({ title, note, columns, rows, onClose }) {
+function DataTableDialog({ title, note, columns, rows, add, onClose }) {
   const closeRef = useRef(null);
-  const [editing, setEditing] = useState(null); // { id, values }
+  const NEW = "__new__";
+  const blank = () => ({ id: NEW, values: Object.fromEntries(add.fields.map((f) => [f.name, f.value ?? ""])) });
+  // An empty table opens straight on the form for a new result.
+  const [editing, setEditing] = useState(() => (add && !rows.length ? blank() : null)); // { id, values }
   const [asking, setAsking] = useState(null); // row waiting for "Are you sure?"
   const [err, setErr] = useState("");
   const busy = useRef({ editing: null, asking: null });
@@ -6048,6 +6051,7 @@ function DataTableDialog({ title, note, columns, rows, onClose }) {
     return () => document.removeEventListener("keydown", onKey);
   }, []);
   const sorted = [...rows].sort((a, b) => b.date.localeCompare(a.date) || String(b.id).localeCompare(String(a.id)));
+  const startAdd = () => { setErr(""); setEditing(blank()); };
   const save = (row) => {
     const v = editing.values;
     for (const f of row.edit.fields) {
@@ -6070,6 +6074,24 @@ function DataTableDialog({ title, note, columns, rows, onClose }) {
     setEditing(null);
     setErr("");
   };
+  // The same fields as a correction, for a new result or a correction.
+  const formFields = (fields) => fields.map((f) => (
+    <Field key={f.name} label={f.label}>
+      {f.type === "select" ? (
+        <select className={inputCls} style={inputStyle} value={editing.values[f.name]}
+          onChange={(e) => setEditing({ ...editing, values: { ...editing.values, [f.name]: e.target.value } })}>
+          {f.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      ) : (
+        <input type={f.type === "number" ? "number" : f.type === "date" ? "date" : "text"}
+          inputMode={f.type === "number" ? "decimal" : undefined} step="any"
+          max={f.type === "date" ? today() : undefined}
+          className={inputCls} style={inputStyle} value={editing.values[f.name] ?? ""}
+          onChange={(e) => setEditing({ ...editing, values: { ...editing.values, [f.name]: e.target.value } })} />
+      )}
+    </Field>
+  ));
+  const adding = editing && editing.id === NEW;
   const cellCls = "px-2 py-2 text-left align-top";
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-2 sm:p-4" style={{ background: C.scrim }} onClick={onClose}>
@@ -6079,18 +6101,35 @@ function DataTableDialog({ title, note, columns, rows, onClose }) {
         <div className="flex items-start justify-between gap-2 p-4 pb-2">
           <div>
             <h2 id="table-title" className="text-lg font-bold leading-snug">{title}</h2>
-            <p className="text-sm" style={{ color: C.muted }}>
-              {rows.length} {rows.length === 1 ? "value" : "values"}, newest first. Tap the pencil to correct a value or the trash can to delete it.
-            </p>
+            {rows.length > 0 && (
+              <p className="text-sm" style={{ color: C.muted }}>
+                {rows.length} {rows.length === 1 ? "value" : "values"}, newest first. Tap the pencil to correct a value or the trash can to delete it.
+                {add ? " Tap Add a result to enter a new one." : ""}
+              </p>
+            )}
             {note && <p className="text-xs mt-1" style={{ color: C.muted }}>{note}</p>}
+            {add && !adding && (
+              <div className="mt-2"><Button kind="secondary" onClick={startAdd}>+ Add a result</Button></div>
+            )}
           </div>
           <button ref={closeRef} onClick={onClose} aria-label="Close table"
             className="fx-press flex items-center justify-center rounded-md text-2xl leading-none focus:outline-none focus:ring-2"
             style={{ width: 40, height: 40, color: C.muted, flexShrink: 0 }}>×</button>
         </div>
         <div className="overflow-auto px-2 pb-2" style={{ flex: "1 1 auto" }}>
+          {adding && (
+            <div className="rounded-md p-3 mb-2" style={{ background: C.accentSoft }}>
+              <p className="text-sm font-bold mb-2">Add a result</p>
+              {formFields(add.fields)}
+              {err && <p className="text-sm mb-2" role="alert" style={{ color: C.error }}>{err}</p>}
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={() => save({ edit: add })}>Save result</Button>
+                <Button kind="secondary" onClick={() => { setEditing(null); setErr(""); }}>Cancel</Button>
+              </div>
+            </div>
+          )}
           {rows.length === 0 ? (
-            <p className="text-base p-4" style={{ color: C.muted }}>Nothing left in this table.</p>
+            !adding && <p className="text-base p-4" style={{ color: C.muted }}>Nothing left in this table.</p>
           ) : (
             <table className="w-full text-sm" style={{ borderCollapse: "collapse" }}>
               <thead>
@@ -6107,22 +6146,7 @@ function DataTableDialog({ title, note, columns, rows, onClose }) {
                     <tr key={row.id} style={{ background: C.accentSoft, borderTop: `1px solid ${C.line}` }}>
                       <td colSpan={columns.length + 2} className="p-3">
                         <p className="text-sm font-bold mb-2">Correct this {row.what || "result"}</p>
-                        {row.edit.fields.map((f) => (
-                          <Field key={f.name} label={f.label}>
-                            {f.type === "select" ? (
-                              <select className={inputCls} style={inputStyle} value={editing.values[f.name]}
-                                onChange={(e) => setEditing({ ...editing, values: { ...editing.values, [f.name]: e.target.value } })}>
-                                {f.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                              </select>
-                            ) : (
-                              <input type={f.type === "number" ? "number" : f.type === "date" ? "date" : "text"}
-                                inputMode={f.type === "number" ? "decimal" : undefined} step="any"
-                                max={f.type === "date" ? today() : undefined}
-                                className={inputCls} style={inputStyle} value={editing.values[f.name] ?? ""}
-                                onChange={(e) => setEditing({ ...editing, values: { ...editing.values, [f.name]: e.target.value } })} />
-                            )}
-                          </Field>
-                        ))}
+                        {formFields(row.edit.fields)}
                         {err && <p className="text-sm mb-2" role="alert" style={{ color: C.error }}>{err}</p>}
                         <div className="flex flex-wrap gap-2">
                           <Button onClick={() => save(row)}>Save correction</Button>
@@ -7558,6 +7582,21 @@ function FabryTracker() {
   };
   const backupNudge = useBackupNudge(data, backupDates[activeId]);
 
+  // The spreadsheet warning, shown under whichever CSV button was tapped (Export, or the AI section).
+  const csvWarning = (
+    <div className="fx-fade p-3 mb-4 rounded-md" role="group" aria-label="Spreadsheet warning"
+      style={{ background: C.subtle, border: `2px solid ${C.error}` }}>
+      <p className="text-sm font-bold mb-1" style={{ color: C.error }}>Spreadsheets can't be locked</p>
+      <p className="text-sm mb-3">
+        Anyone who gets this file can read the health information in it. Only send it to people you trust, like
+        your care team, and delete it from your phone or computer when you're done.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <Button onClick={() => exportData("csv")}>Download spreadsheet</Button>
+        <Button kind="secondary" onClick={() => setExportAsk("")}>Cancel</Button>
+      </div>
+    </div>
+  );
   const copyExport = async () => {
     try {
       await navigator.clipboard.writeText(exported.text);
@@ -7712,6 +7751,14 @@ function FabryTracker() {
   const keepEntries = (label) => {
     const before = data.entries;
     return () => setData((d) => ({ ...d, entries: before }));
+  };
+  // Adds a new result from a chart's table, as its own visit on that date.
+  const addValues = (values, date, label) => {
+    const clean = Object.fromEntries(Object.entries(values).filter(([, v]) => hasVal(v)));
+    if (!Object.keys(clean).length) return;
+    const undo = keepEntries();
+    setData((d) => ({ ...d, entries: [...d.entries, { id: uid(), date, ...clean }] }));
+    setToast({ text: `${label} added`, undo });
   };
   // Removes one value from a visit. The visit goes too if nothing else was recorded on it.
   const deleteValues = (entryId, ids, label) => {
@@ -8328,7 +8375,17 @@ function FabryTracker() {
       const m = metricById(table.id);
       if (!m) return null;
       const unit = units.unit(m);
+      const add = m.kind === "titer"
+        ? { fields: [dateField(today()), { name: "value", label: `${m.short} (like 1/100)`, type: "text", value: "",
+          validate: (v) => (parseTiter(v) === null ? "Type the titer like 1/100." : "") }],
+        onSave: (v) => addValues({ [m.id]: parseTiter(v.value) }, v.date, m.short) }
+        : m.kind === "yesno"
+          ? { fields: [dateField(today()), { name: "value", label: m.short, type: "select", value: "0", options: [{ value: "0", label: "No" }, { value: "1", label: "Yes" }] }],
+            onSave: (v) => addValues({ [m.id]: Number(v.value) }, v.date, m.short) }
+          : { fields: [dateField(today()), { name: "value", label: unit ? `${m.short} (${unit})` : m.short, type: "number", min: m.min, value: "" }],
+            onSave: (v) => addValues({ [m.id]: units.store(m.id, v.value) }, v.date, m.short) };
       return {
+        add,
         title: metricLabel(cond, m),
         columns: [{ key: "value", label: m.kind === "yesno" ? "Result" : m.kind === "titer" ? "Titer" : unit || "Value" }, { key: "src", label: "", muted: true }],
         rows: data.entries.filter((e) => hasVal(e[m.id])).map((e) => {
@@ -8360,6 +8417,11 @@ function FabryTracker() {
       const cm = metricById("creatinine");
       const cu = units.unit(cm);
       return {
+        add: {
+          fields: [dateField(today()), { name: "value", label: `Creatinine (${cu})`, type: "number", value: "" },
+            { name: "height", label: `Height (${units.unit(metricById("heightCm"))}), needed under age 18`, type: "number", required: false, value: "" }],
+          onSave: (v) => addValues({ creatinine: units.store("creatinine", v.value), heightCm: hasVal(v.height) ? units.store("heightCm", v.height) : "" }, v.date, "Creatinine"),
+        },
         title: "Kidney function (eGFR)",
         note: "eGFR is calculated from creatinine (and height under age 18), so correct the creatinine to change it.",
         columns: [{ key: "value", label: `Creatinine (${cu})` }, { key: "egfr", label: "eGFR" }, { key: "src", label: "", muted: true }],
@@ -8383,6 +8445,13 @@ function FabryTracker() {
       const pm = metricById("stoneProc");
       const sm = metricById("stoneSide");
       return {
+        add: {
+          fields: [dateField(today()),
+            { name: "proc", label: "Procedure", type: "select", value: pm.options[0].value, options: pm.options },
+            { name: "side", label: "Side", type: "select", value: "", options: [{ value: "", label: "Not recorded" }, ...sm.options] },
+            { name: "notes", label: "Notes", type: "text", value: "" }],
+          onSave: (v) => addValues({ stoneProc: v.proc, stoneSide: v.side, stoneNotes: String(v.notes || "").trim() }, v.date, "Procedure"),
+        },
         title: "Kidney stone procedures",
         columns: [{ key: "value", label: "Procedure" }, { key: "side", label: "Side" }, { key: "notes", label: "Notes" }],
         rows: data.entries.filter((e) => hasVal(e.stoneProc)).map((e) => ({
@@ -8401,6 +8470,13 @@ function FabryTracker() {
     }
     if (table.kind === "eyes") {
       return {
+        add: {
+          fields: [dateField(today()),
+            { name: "visit", label: "Ophthalmology appointment", type: "select", value: "1",
+              options: [{ value: "0", label: "No" }, { value: "1", label: "Yes" }] },
+            { name: "notes", label: "Recommendations", type: "text", value: "" }],
+          onSave: (v) => addValues({ eyeVisit: Number(v.visit), eyeNotes: String(v.notes || "").trim() }, v.date, "Eye appointment"),
+        },
         title: "Ophthalmology appointments",
         columns: [{ key: "value", label: "Appointment" }, { key: "notes", label: "Recommendations" }],
         rows: data.entries.filter((e) => hasVal(e.eyeVisit) || hasVal(e.eyeNotes)).map((e) => ({
@@ -8421,6 +8497,11 @@ function FabryTracker() {
       const wm = metricById("weight");
       const wu = units.unit(wm);
       return {
+        add: {
+          fields: [dateField(today()), { name: "value", label: `Weight (${wu})`, type: "number", value: "" },
+            { name: "height", label: `Height (${units.unit(metricById("heightCm"))}) on this date`, type: "number", required: false, value: "" }],
+          onSave: (v) => addValues({ weight: units.store("weight", v.value), heightCm: hasVal(v.height) ? units.store("heightCm", v.height) : "" }, v.date, "Weight"),
+        },
         title: "Body mass index (BMI)",
         note: "BMI is calculated from weight and height, so correct those to change it. Deleting removes that date's weight.",
         columns: [{ key: "value", label: "BMI" }, { key: "weight", label: `Weight (${wu})` }, { key: "height", label: `Height (${units.unit(metricById("heightCm"))})` }],
@@ -8442,6 +8523,13 @@ function FabryTracker() {
     }
     if (table.kind === "hearing") {
       return {
+        add: {
+          fields: [dateField(today()), ...HEARING_IDS.map((id) => {
+            const m = metricById(id);
+            return { name: id, label: `${m.label} (dB HL)`, type: "number", min: -10, max: 130, required: false, value: "" };
+          })],
+          onSave: (v) => addValues(Object.fromEntries(HEARING_IDS.map((id) => [id, hasVal(v[id]) ? Number(v[id]) : ""])), v.date, "Hearing test"),
+        },
         title: "Hearing tests",
         note: "The high-frequency average is calculated from 4000 and 8000 Hz. Correct a test to see all its values.",
         columns: [{ key: "value", label: "Left average" }, { key: "right", label: "Right average" }, { key: "src", label: "", muted: true }],
@@ -9687,20 +9775,7 @@ function FabryTracker() {
                 </div>
               </div>
             )}
-            {exportAsk === "csv" && (
-              <div className="fx-fade p-3 mb-4 rounded-md" role="group" aria-label="Spreadsheet warning"
-                style={{ background: C.subtle, border: `2px solid ${C.error}` }}>
-                <p className="text-sm font-bold mb-1" style={{ color: C.error }}>Spreadsheets can't be locked</p>
-                <p className="text-sm mb-3">
-                  Anyone who gets this file can read the health information in it. Only send it to people you trust, like
-                  your care team, and delete it from your phone or computer when you're done.
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <Button onClick={() => exportData("csv")}>Download spreadsheet</Button>
-                  <Button kind="secondary" onClick={() => setExportAsk("")}>Cancel</Button>
-                </div>
-              </div>
-            )}
+            {exportAsk === "csv" && csvWarning}
             {exported && (
               <div className="fx-fade p-3 mb-5 rounded-md" style={{ background: C.subtle, border: `1px solid ${C.line}` }}>
                 <p className="text-sm mb-2">
@@ -9718,6 +9793,29 @@ function FabryTracker() {
                 </div>
               </div>
             )}
+
+            <section aria-labelledby="ai-export" className="p-4 mb-4 rounded-lg" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
+              <h3 id="ai-export" className="text-base font-bold mb-1">Using artificial intelligence (AI) with your results</h3>
+              <p className="text-sm mb-2">
+                Artificial intelligence (AI) doesn't replace your doctor. If you'd like, you can export the spreadsheet (CSV), then
+                copy and paste its values into the AI assistant of your choice and ask it questions, such as:
+              </p>
+              <ul className="text-sm mb-2 pl-5" style={{ listStyle: "disc" }}>
+                <li>“How am I doing?”</li>
+                <li>“What questions should I ask my doctor?”</li>
+              </ul>
+              <p className="text-sm mb-2">
+                When you paste your results into an AI, they're sent to the company that runs it, and its own privacy policy
+                applies. Leave out your name and anything else that identifies you.
+              </p>
+              <p className="text-sm mb-3" style={{ color: C.muted }}>
+                My Rare Disease Tracker isn't responsible for any answer an AI gives. Which AI you use, what you share with it
+                and what you ask it are your choice. Check what an AI tells you with your care team before making any health
+                decisions.
+              </p>
+              <Button kind="secondary" onClick={() => { setExported(null); setExportAsk("csvai"); }}>Export spreadsheet for AI (CSV)</Button>
+              {exportAsk === "csvai" && <div className="mt-3">{csvWarning}</div>}
+            </section>
 
             <div data-tour="profile-restore">
               <h2 className="text-base font-bold mb-2 mt-5">Restore from a backup</h2>
@@ -9825,7 +9923,7 @@ function FabryTracker() {
       )}
       {showTerms && <TermsDialog accepted={terms} onClose={() => setShowTerms(false)} />}
       {tableSpec && <DataTableDialog key={`${table.kind}-${table.id || ""}`} title={tableSpec.title} note={tableSpec.note}
-        columns={tableSpec.columns} rows={tableSpec.rows} onClose={() => setTable(null)} />}
+        columns={tableSpec.columns} rows={tableSpec.rows} add={tableSpec.add} onClose={() => setTable(null)} />}
       {askDelete && <ConfirmDialog title={askDelete.title} detail={askDelete.detail}
         onYes={() => { askDelete.onYes(); setAskDelete(null); }} onNo={() => setAskDelete(null)} />}
       {showContact && <ContactDialog region={region} onClose={() => setShowContact(false)} />}

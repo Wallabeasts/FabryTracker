@@ -1,0 +1,5 @@
+/* My Rare Disease Tracker: name and permission messages in this language */
+"CFBundleDisplayName" = "My RDT";
+"NSFaceIDUsageDescription" = "Face ID otevře váš zdravotní záznam bez zadávání hesla. Data o vašem obličeji zůstávají v iPhonu.";
+"NSHealthShareUsageDescription" = "Pokud připojíte aplikaci Zdraví, aplikace přečte krevní tlak, klidovou srdeční frekvenci, hmotnost a výšku a přidá je do vašeho záznamu v tomto iPhonu. Nic se neposílá nám ani nikomu jinému.";
+"NSHealthUpdateUsageDescription" = "My Rare Disease Tracker z aplikace Zdraví pouze čte. Nikdy v ní nic nezapisuje, nemění ani nemaže.";

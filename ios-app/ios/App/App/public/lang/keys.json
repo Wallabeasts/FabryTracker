@@ -3085,5 +3085,17 @@
   "Export charts (PDF)",
   "A PDF of your charts is easiest to print or bring to appointments.",
   "PDF files can't be locked",
-  "Save PDF"
+  "Save PDF",
+  "View table or add results (",
+  "+ Add a result",
+  "Add a result",
+  "Save result",
+  "Tap Add a result to enter a new one.",
+  "Using artificial intelligence (AI) with your results",
+  "Artificial intelligence (AI) doesn't replace your doctor. If you'd like, you can export the spreadsheet (CSV), then copy and paste its values into the AI assistant of your choice and ask it questions, such as:",
+  "“How am I doing?”",
+  "“What questions should I ask my doctor?”",
+  "When you paste your results into an AI, they're sent to the company that runs it, and its own privacy policy applies. Leave out your name and anything else that identifies you.",
+  "My Rare Disease Tracker isn't responsible for any answer an AI gives. Which AI you use, what you share with it and what you ask it are your choice. Check what an AI tells you with your care team before making any health decisions.",
+  "Export spreadsheet for AI (CSV)"
 ]

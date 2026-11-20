@@ -3085,5 +3085,17 @@
   "Eksporter diagrammer (PDF)",
   "En PDF av diagrammene er enklest å skrive ut eller ta med til kontroller.",
   "PDF-filer kan ikke låses",
-  "Lagre PDF"
+  "Lagre PDF",
+  "Vis tabell eller legg til resultater (",
+  "+ Legg til et resultat",
+  "Legg til et resultat",
+  "Lagre resultatet",
+  "Trykk på Legg til et resultat for å legge inn et nytt.",
+  "Bruke kunstig intelligens (KI) med resultatene dine",
+  "Kunstig intelligens (KI) erstatter ikke legen din. Hvis du vil, kan du eksportere regnearket (CSV), kopiere og lime inn verdiene i KI-assistenten du velger, og stille den spørsmål, for eksempel:",
+  "«Hvordan går det med meg?»",
+  "«Hvilke spørsmål bør jeg stille legen min?»",
+  "Når du limer inn resultatene dine i en KI, sendes de til selskapet som driver den, og selskapets egne personvernregler gjelder. Utelat navnet ditt og alt annet som kan identifisere deg.",
+  "My Rare Disease Tracker er ikke ansvarlig for svar fra en KI. Hvilken KI du bruker, hva du deler med den og hva du spør om, er ditt valg. Sjekk det en KI forteller deg med behandlingsteamet ditt før du tar beslutninger om helsen din.",
+  "Eksporter regneark for KI (CSV)"
 ]

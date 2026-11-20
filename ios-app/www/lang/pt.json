@@ -3085,5 +3085,17 @@
   "Exportar gráficos (PDF)",
   "Um PDF dos seus gráficos é o mais fácil para imprimir ou levar às consultas.",
   "Arquivos PDF não podem ser bloqueados",
-  "Salvar PDF"
+  "Salvar PDF",
+  "Ver tabela ou adicionar resultados (",
+  "+ Adicionar um resultado",
+  "Adicionar um resultado",
+  "Salvar resultado",
+  "Toque em Adicionar um resultado para inserir um novo.",
+  "Como usar a inteligência artificial (IA) com seus resultados",
+  "A inteligência artificial (IA) não substitui o seu médico. Se quiser, você pode exportar a planilha (CSV), copiar e colar os valores no assistente de IA de sua escolha e fazer perguntas como:",
+  "“Como estou indo?”",
+  "“Que perguntas devo fazer ao meu médico?”",
+  "Quando você cola seus resultados em uma IA, eles são enviados à empresa que a opera, e a política de privacidade dela se aplica. Não inclua seu nome nem nada que identifique você.",
+  "O My Rare Disease Tracker não é responsável por nenhuma resposta dada por uma IA. Qual IA você usa, o que compartilha com ela e o que pergunta são escolhas suas. Confira o que uma IA disser com sua equipe de saúde antes de tomar qualquer decisão sobre sua saúde.",
+  "Exportar planilha para IA (CSV)"
 ]
