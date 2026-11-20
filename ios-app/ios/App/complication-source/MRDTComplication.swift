@@ -30,7 +30,9 @@ private func quickLog() -> String {
     case "fr": return "Saisie rapide"
     case "it": return "Registrazione rapida"
     case "pt": return "Registro rápido"
+    case "nb", "no", "nn": return "Hurtigregistrering"
     case "zh": return "快速记录"
+    case "ja": return "クイック記録"
     case "ar": return "تسجيل سريع"
     default: return "Quick log"
     }
