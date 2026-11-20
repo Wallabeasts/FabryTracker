@@ -18,6 +18,9 @@
 		9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9582B6822FE993A50072D4E8 /* SceneDelegate.swift */; };
 		A1B2C3D42F00000100000001 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D42F00000100000002 /* PrivacyInfo.xcprivacy */; };
 		AD0C7EDF30AD145000B42023 /* MRDT Watch Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = AD0C7ED530AD144F00B42023 /* MRDT Watch Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		ADDDC96A30B039A0001549F7 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = ADDDC96930B039A0001549F7 /* WidgetKit.framework */; };
+		ADDDC96C30B039A0001549F7 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = ADDDC96B30B039A0001549F7 /* SwiftUI.framework */; };
+		ADDDC97930B039A0001549F7 /* MRDT ComplicationExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = ADDDC96730B039A0001549F7 /* MRDT ComplicationExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -27,6 +30,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = AD0C7ED430AD144F00B42023;
 			remoteInfo = "MRDT Watch Watch App";
+		};
+		ADDDC97730B039A0001549F7 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 504EC2FC1FED79650016851F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = ADDDC96630B039A0001549F7;
+			remoteInfo = "MRDT ComplicationExtension";
 		};
 /* End PBXContainerItemProxy section */
 
@@ -40,6 +50,17 @@
 				AD0C7EDF30AD145000B42023 /* MRDT Watch Watch App.app in Embed Watch Content */,
 			);
 			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		ADDDC97A30B039A0001549F7 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				ADDDC97930B039A0001549F7 /* MRDT ComplicationExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXCopyFilesBuildPhase section */
@@ -60,10 +81,24 @@
 		A1B2C3D42F00000100000002 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		AD0C7ED530AD144F00B42023 /* MRDT Watch Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "MRDT Watch Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		AD0C7EEA30AD173800B42023 /* MRDT-Watch-Watch-App-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "MRDT-Watch-Watch-App-Info.plist"; sourceTree = "<group>"; };
+		ADDDC96730B039A0001549F7 /* MRDT ComplicationExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "MRDT ComplicationExtension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
+		ADDDC96930B039A0001549F7 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		ADDDC96B30B039A0001549F7 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		ADDDC97D30B039A0001549F7 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = ADDDC96630B039A0001549F7 /* MRDT ComplicationExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		AD0C7ED630AD144F00B42023 /* MRDT Watch Watch App */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = "MRDT Watch Watch App"; sourceTree = "<group>"; };
+		ADDDC96D30B039A0001549F7 /* MRDT Complication */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (ADDDC97D30B039A0001549F7 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = "MRDT Complication"; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -82,6 +117,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		ADDDC96430B039A0001549F7 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				ADDDC96C30B039A0001549F7 /* SwiftUI.framework in Frameworks */,
+				ADDDC96A30B039A0001549F7 /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -92,6 +136,8 @@
 				958DCC722DB07C7200EA8C5F /* debug.xcconfig */,
 				504EC3061FED79650016851F /* App */,
 				AD0C7ED630AD144F00B42023 /* MRDT Watch Watch App */,
+				ADDDC96D30B039A0001549F7 /* MRDT Complication */,
+				ADDDC96830B039A0001549F7 /* Frameworks */,
 				504EC3051FED79650016851F /* Products */,
 			);
 			sourceTree = "<group>";
@@ -101,6 +147,7 @@
 			children = (
 				504EC3041FED79650016851F /* App.app */,
 				AD0C7ED530AD144F00B42023 /* MRDT Watch Watch App.app */,
+				ADDDC96730B039A0001549F7 /* MRDT ComplicationExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -121,6 +168,15 @@
 				50B271D01FEDC1A000F3C39B /* public */,
 			);
 			path = App;
+			sourceTree = "<group>";
+		};
+		ADDDC96830B039A0001549F7 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				ADDDC96930B039A0001549F7 /* WidgetKit.framework */,
+				ADDDC96B30B039A0001549F7 /* SwiftUI.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -155,10 +211,12 @@
 				AD0C7ED130AD144F00B42023 /* Sources */,
 				AD0C7ED230AD144F00B42023 /* Frameworks */,
 				AD0C7ED330AD144F00B42023 /* Resources */,
+				ADDDC97A30B039A0001549F7 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				ADDDC97830B039A0001549F7 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				AD0C7ED630AD144F00B42023 /* MRDT Watch Watch App */,
@@ -169,6 +227,28 @@
 			productName = "MRDT Watch Watch App";
 			productReference = AD0C7ED530AD144F00B42023 /* MRDT Watch Watch App.app */;
 			productType = "com.apple.product-type.application";
+		};
+		ADDDC96630B039A0001549F7 /* MRDT ComplicationExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = ADDDC97E30B039A0001549F7 /* Build configuration list for PBXNativeTarget "MRDT ComplicationExtension" */;
+			buildPhases = (
+				ADDDC96330B039A0001549F7 /* Sources */,
+				ADDDC96430B039A0001549F7 /* Frameworks */,
+				ADDDC96530B039A0001549F7 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				ADDDC96D30B039A0001549F7 /* MRDT Complication */,
+			);
+			name = "MRDT ComplicationExtension";
+			packageProductDependencies = (
+			);
+			productName = "MRDT ComplicationExtension";
+			productReference = ADDDC96730B039A0001549F7 /* MRDT ComplicationExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -184,6 +264,10 @@
 						LastSwiftMigration = 1100;
 					};
 					AD0C7ED430AD144F00B42023 = {
+						CreatedOnToolsVersion = 27.2;
+						LastSwiftMigration = 2720;
+					};
+					ADDDC96630B039A0001549F7 = {
 						CreatedOnToolsVersion = 27.2;
 						LastSwiftMigration = 2720;
 					};
@@ -207,6 +291,7 @@
 			targets = (
 				504EC3031FED79650016851F /* App */,
 				AD0C7ED430AD144F00B42023 /* MRDT Watch Watch App */,
+				ADDDC96630B039A0001549F7 /* MRDT ComplicationExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -233,6 +318,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		ADDDC96530B039A0001549F7 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -252,6 +344,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		ADDDC96330B039A0001549F7 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -259,6 +358,11 @@
 			isa = PBXTargetDependency;
 			target = AD0C7ED430AD144F00B42023 /* MRDT Watch Watch App */;
 			targetProxy = AD0C7EDD30AD145000B42023 /* PBXContainerItemProxy */;
+		};
+		ADDDC97830B039A0001549F7 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = ADDDC96630B039A0001549F7 /* MRDT ComplicationExtension */;
+			targetProxy = ADDDC97730B039A0001549F7 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -539,6 +643,98 @@
 			};
 			name = Release;
 		};
+		ADDDC97B30B039A0001549F7 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = V8PQ9VWV82;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "MRDT Complication/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "MRDT Complication";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MARKETING_VERSION = 1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.myrarediseasetracker.app.watchkitapp.MRDT-Complication";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 10.6;
+			};
+			name = Debug;
+		};
+		ADDDC97C30B039A0001549F7 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = V8PQ9VWV82;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "MRDT Complication/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "MRDT Complication";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MARKETING_VERSION = 1.0;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.myrarediseasetracker.app.watchkitapp.MRDT-Complication";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 10.6;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -565,6 +761,15 @@
 			buildConfigurations = (
 				AD0C7EE130AD145000B42023 /* Debug */,
 				AD0C7EE230AD145000B42023 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		ADDDC97E30B039A0001549F7 /* Build configuration list for PBXNativeTarget "MRDT ComplicationExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				ADDDC97B30B039A0001549F7 /* Debug */,
+				ADDDC97C30B039A0001549F7 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
