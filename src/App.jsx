@@ -767,19 +767,20 @@ const durText = (min) => {
   const r = n % 60;
   return h && r ? `${h} h ${r} min` : h ? `${h} h` : `${r} min`;
 };
-// Whether the infusion reaction log shows for a record. The Profile question decides ("yes" or "no"); until it's
-// answered, an infusion therapy listed under Treatments as being taken now counts as yes.
-//   on: on infusions, so the quick log asks about reactions.   ask: not known yet, so the quick log asks.
+// Whether the infusion reaction log shows for a record. "Are you on infusions?" is asked when the profile is set up
+// and can be changed in Profile ("yes" or "no"). For a record where it was never answered, an infusion therapy listed
+// under Treatments as being taken now counts as yes; otherwise the log stays hidden. The quick log itself never asks.
+//   on: on infusions, so the quick log has the infusion reaction question.
 //   show: the Infusions section is on the Trends and Add pages (also when reactions were already logged).
 //   answer: what the Profile question shows.
 function infusionStatus(data, cond) {
-  if (!cond.infusionLog) return { on: false, ask: false, show: false, answer: "" };
+  if (!cond.infusionLog) return { on: false, show: false, answer: "" };
   const answer = ["yes", "no"].includes(data.profile.infusions) ? data.profile.infusions : "";
   const now = today();
   const listed = data.meds.some((m) => (MEDS.find((x) => x.id === effectiveMed(m).med) || {}).infusion
     && m.start <= now && (!m.stop || m.stop >= now));
   const on = answer === "yes" || (!answer && listed);
-  return { on, ask: !answer && !listed, show: on || data.entries.some(isInfusion), answer: answer || (listed ? "yes" : "") };
+  return { on, show: on || data.entries.some(isInfusion), answer: answer || (listed ? "yes" : "") };
 }
 const infusionQuestion = (self) => (self ? "Are you on infusions (enzyme replacement therapy)?" : "Are they on infusions (enzyme replacement therapy)?");
 // The choices for how long an infusion took: every 15 minutes up to 12 hours.
@@ -2260,18 +2261,26 @@ function InfusionInputs({ form, setForm }) {
   );
 }
 
-// Quick-log question shown until Profile knows whether the person is on infusions. Yes adds the infusion reaction
-// question; No hides it (Profile can change it back).
-function AskInfusions({ question, onAnswer }) {
-  const btn = "fx-press py-3 rounded-md text-base font-bold focus:outline-none focus:ring-2";
+// "Are you on infusions?" on the pages where a profile is set up (first run, and adding a family member), for the
+// conditions with an infusion reaction log. Yes puts the infusion reaction question in the quick log; No leaves it
+// out. Profile can change it later.
+function InfusionChoice({ question, value, onChange }) {
+  const qid = useId();
   return (
-    <div className="mt-4" data-ask-infusions>
-      <p className="text-sm mb-2" style={{ color: C.muted }}>{question}</p>
-      <div className="grid grid-cols-2 gap-2">
-        <button onClick={() => onAnswer("yes")} className={btn} style={{ border: `2px solid ${C.accent}`, color: C.accent, background: C.surface }}>Yes</button>
-        <button onClick={() => onAnswer("no")} className={btn} style={{ border: `2px solid ${C.accent}`, color: C.accent, background: C.surface }}>No</button>
+    <div className="mb-3" data-setup-infusions>
+      <span id={qid} className="block text-sm mb-1" style={{ color: C.muted }}>{question}</span>
+      <div className="grid grid-cols-2 gap-2" role="group" aria-labelledby={qid}>
+        {[["yes", "Yes"], ["no", "No"]].map(([v, label]) => (
+          <button key={v} onClick={() => onChange(v)} aria-pressed={value === v}
+            className="fx-press py-3 rounded-md text-base font-bold focus:outline-none focus:ring-2"
+            style={value === v
+              ? { background: C.accent, color: C.onAccent, border: `2px solid ${C.accent}` }
+              : { background: C.surface, color: C.ink, border: `2px solid ${C.line}` }}>
+            {label}
+          </button>
+        ))}
       </div>
-      <p className="text-xs mt-2" style={{ color: C.muted }}>Yes adds a place to log infusion reactions. You can change this in Profile.</p>
+      <p className="text-sm mt-2" style={{ color: C.muted }}>Yes adds a place to log infusion reactions. You can change this in Profile.</p>
     </div>
   );
 }
@@ -5509,6 +5518,10 @@ function PeopleCard({ people, onSwitch, onAdd, onRemove, onImport, currentMutati
               {CONDITIONS.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </Field>
+          {formCond.infusionLog && (
+            <InfusionChoice question={infusionQuestion(false)} value={form.infusions || ""}
+              onChange={(v) => setForm((f) => ({ ...f, infusions: v }))} />
+          )}
           <BirthDateField label="Their date of birth" style={inputStyle} value={form.birthDate}
             onChange={(v) => setForm((f) => ({ ...f, birthDate: v }))} />
           {futureBirth && <p className="text-sm -mt-2 mb-3" style={{ color: C.error }}>Birth date can't be in the future.</p>}
@@ -5540,7 +5553,8 @@ function PeopleCard({ people, onSwitch, onAdd, onRemove, onImport, currentMutati
           <div className="flex flex-wrap gap-2">
             <Button disabled={!form.name.trim() || futureBirth} onClick={() => {
               onAdd({ myName: form.myName.trim(), name: form.name.trim(), relation: form.relation,
-                birthDate: form.birthDate, sex: form.sex, mutation: variant.trim(), condition: formCond.id });
+                birthDate: form.birthDate, sex: form.sex, mutation: variant.trim(), condition: formCond.id,
+                infusions: formCond.infusionLog ? form.infusions || "" : "" });
               close();
             }}>Create {form.name.trim() ? `${form.name.trim()}'s` : "their"} record</Button>
             <Button kind="secondary" onClick={close}>Cancel</Button>
@@ -7914,7 +7928,7 @@ function FabryTracker() {
     setTheme(t);
     window.storage.set(THEME_KEY, t, false).catch(() => {});
   };
-  const [setup, setSetup] = useState({ birthDate: "", sex: "", mutation: "", condition: "", phenotype: "", country: "" });
+  const [setup, setSetup] = useState({ birthDate: "", sex: "", mutation: "", condition: "", phenotype: "", country: "", infusions: "" });
 
   useEffect(() => {
     (async () => {
@@ -8073,15 +8087,6 @@ function FabryTracker() {
     setData((d) => ({ ...d, entries: [...d.entries, { id, date: today(), infRxn: f.sev,
       ...(picked ? { infPremeds: picked } : {}), ...(hasVal(f.min) ? { infMin: Number(f.min) } : {}) }] }));
     setToast({ text: `Infusion reaction ${f.sev}/10 logged for today`, undo: () => setData((d) => ({ ...d, entries: d.entries.filter((e) => e.id !== id) })) });
-  };
-  // The answer to "Are you on infusions?", from the quick log. No hides the infusion reaction log.
-  const answerInfusions = (v) => {
-    const before = data.profile.infusions || "";
-    setData((d) => ({ ...d, profile: { ...d.profile, infusions: v } }));
-    if (v === "no") {
-      setToast({ text: "Infusion reaction log hidden. You can change this in Profile.",
-        undo: () => setData((d) => ({ ...d, profile: { ...d.profile, infusions: before } })) });
-    }
   };
   // Premedications listed under Treatments as being taken today. The quick log starts with these ticked.
   const standingPremeds = multiValues(metricById("infPremeds"), data.meds
@@ -8560,9 +8565,9 @@ function FabryTracker() {
   const renamePerson = (id, name) => setPeople((ppl) => ({ ...ppl, list: ppl.list.map((p) => (p.id === id ? { ...p, name } : p)) }));
 
   // A new person's record is created complete, so the first-run setup page never appears for them.
-  const addPerson = ({ myName, name, relation, birthDate = "", sex = "", mutation = "", condition = cond.id }) => {
+  const addPerson = ({ myName, name, relation, birthDate = "", sex = "", mutation = "", condition = cond.id, infusions = "" }) => {
     const id = uid();
-    const rec = { ...EMPTY, condition, recordId: uid(), onboarded: true, profile: { ...EMPTY.profile, birthDate, sex, mutation } };
+    const rec = { ...EMPTY, condition, recordId: uid(), onboarded: true, profile: { ...EMPTY.profile, birthDate, sex, mutation, infusions } };
     const list = [...people.list.map((p) => (p.id === SELF && myName ? { ...p, name: myName } : p)),
       { id, name, relation, recordId: rec.recordId }];
     openPerson(id, rec, list);
@@ -9124,7 +9129,10 @@ function FabryTracker() {
   if (needsSetup) {
     const future = setup.birthDate && setup.birthDate > today();
     const chosen = conditionById(setup.condition);
-    const ready = chosen && setup.birthDate && setup.sex && !future;
+    // Fabry, Gaucher and Pompe disease also ask whether the person is on infusions.
+    const asksInfusions = Boolean(chosen && chosen.infusionLog);
+    const infusions = asksInfusions ? setup.infusions : "";
+    const ready = chosen && setup.birthDate && setup.sex && !future && (!asksInfusions || infusions);
     const other = activePerson.id !== SELF;
     const them = personLabel(activePerson);
     const finish = (save) => {
@@ -9133,9 +9141,10 @@ function FabryTracker() {
         ...d,
         condition: chosen.id,
         onboarded: true,
+        // "Skip for now" keeps only the infusions answer, if one was given.
         profile: save
-          ? { ...d.profile, birthDate: setup.birthDate, sex: setup.sex, mutation: setup.mutation.trim(), phenotype: setup.phenotype, country: setup.country }
-          : d.profile,
+          ? { ...d.profile, birthDate: setup.birthDate, sex: setup.sex, mutation: setup.mutation.trim(), phenotype: setup.phenotype, country: setup.country, infusions }
+          : { ...d.profile, infusions },
       }));
       setShowWelcome(false);
     };
@@ -9158,7 +9167,7 @@ function FabryTracker() {
           <div className="p-5 rounded-lg" style={{ background: C.surface }}>
             <Field label="Which rare condition do you want to track?">
               <select className={inputCls} style={{ ...darkInput, fontWeight: chosen ? 700 : 400 }} value={setup.condition}
-                onChange={(e) => setSetup({ ...setup, condition: e.target.value, phenotype: "" })}>
+                onChange={(e) => setSetup({ ...setup, condition: e.target.value, phenotype: "", infusions: "" })}>
                 <option value="">Choose a condition</option>
                 {CONDITIONS.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
@@ -9167,6 +9176,10 @@ function FabryTracker() {
               <p className="text-sm -mt-1 mb-3" style={{ color: C.muted }}>
                 Your charts, treatments and Learn tab will be set up for {chosen.name}. You can change this later in Profile.
               </p>
+            )}
+            {asksInfusions && (
+              <InfusionChoice question={infusionQuestion(!other)} value={setup.infusions}
+                onChange={(v) => setSetup((st) => ({ ...st, infusions: v }))} />
             )}
             <BirthDateField label="Date of birth" style={darkInput} value={setup.birthDate}
               onChange={(v) => setSetup((s) => ({ ...s, birthDate: v }))} />
@@ -9433,7 +9446,6 @@ function FabryTracker() {
                 </div>
               ))}
               {infusion.on && <QuickInfusion standing={standingPremeds} onSave={logInfusion} />}
-              {infusion.ask && <AskInfusions question={infusionQuestion(activePerson.id === SELF)} onAnswer={answerInfusions} />}
               {cond.quickProcedure && (
                 <QuickProcedure onSave={(f) => {
                   const id = uid();
