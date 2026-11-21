@@ -4032,6 +4032,14 @@ const ALL_TOUR_STEPS = [
     title: `Welcome to ${APP_INFO.name}`,
     lead: "This app was designed to make sure that you maintain 100% control of your data.",
     motto: "Your Journey, Your Data, Your Control.",
+    // The promise is the first thing a new patient reads: nothing they enter is kept by us or leaves the phone
+    // unless they export or share it themselves.
+    promise: "We do not keep any of your data.",
+    points: [
+      "Everything you enter stays on this phone.",
+      "It is never sent to us or to anyone else. We cannot see it.",
+      "It leaves this phone only if you choose to export it or share it yourself.",
+    ],
     body: "Here's a short tour of how to track your health, learn about your condition, and set up your profile and family. You can skip it now and replay it anytime from Settings.",
   },
   {
@@ -4300,7 +4308,7 @@ function Tour({ onClose, onSample, hasEntries, onTab, quickLog = true }) {
         <div aria-hidden="true" className="fixed inset-0" style={{ background: C.scrim }} />
       )}
       <div key={i} ref={cardRef} className="fx-fade fixed rounded-lg p-4" style={{ ...cardStyle, width: cardW, background: C.surface, color: C.ink,
-        boxShadow: `0 8px 30px ${C.shadow}`, border: `1px solid ${C.line}` }}>
+        boxShadow: `0 8px 30px ${C.shadow}`, border: `1px solid ${C.line}`, maxHeight: vh - margin * 2, overflowY: "auto" }}>
         <div className="flex items-center justify-between mb-1">
           <span className="text-xs font-bold" style={{ color: C.muted }}>Step {i + 1} of {TOUR_STEPS.length}</span>
           {!step.last && (
@@ -4312,15 +4320,33 @@ function Tour({ onClose, onSample, hasEntries, onTab, quickLog = true }) {
         <h2 id="tour-title" className="text-lg font-bold mb-1">{step.title}</h2>
         {step.lead && <p className="text-base mb-2">{step.lead}</p>}
         {step.motto && <p className="text-base font-bold mb-3" style={{ color: C.accent }}>{step.motto}</p>}
-        {step.image === "medChart" && <TourMedChart />}
-        <p id="tour-body" className="text-base mb-3">{step.body}</p>
+        <div id="tour-body">
+          {step.promise && (
+            <div className="p-3 mb-3 rounded-md" data-tour-promise
+              style={{ background: C.subtle, border: `2px solid ${C.accent}` }}>
+              <p className="text-lg font-bold leading-snug mb-2">{step.promise}</p>
+              <ul className="text-base">
+                {step.points.map((pt) => (
+                  <li key={pt} className="flex items-start gap-2 mb-1">
+                    <span aria-hidden="true" className="font-bold" style={{ color: C.accent }}>✓</span>
+                    <span>{pt}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {step.image === "medChart" && <TourMedChart />}
+          <p className="text-base mb-3">{step.body}</p>
+        </div>
         <div className="flex items-center gap-1 mb-3" aria-hidden="true">
           {TOUR_STEPS.map((_, k) => (
             <span key={k} className="rounded-full" style={{ width: k === i ? 16 : 6, height: 6,
               background: k === i ? C.accent : C.line, transition: REDUCED ? "none" : "width 200ms" }} />
           ))}
         </div>
-        <div className="flex flex-wrap gap-2">
+        {/* The buttons stay in view when a long step (large text, or a longer language) makes the card scroll. */}
+        <div className="flex flex-wrap gap-2" data-tour-buttons
+          style={{ position: "sticky", bottom: -16, background: C.surface, paddingTop: 8, paddingBottom: 16, marginBottom: -16 }}>
           {i > 0 && !step.last && <Button kind="secondary" onClick={() => setI(i - 1)}>Back</Button>}
           {step.last ? (
             <>

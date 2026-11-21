@@ -3155,5 +3155,9 @@
   "Yes adds a place to log infusion reactions. You can change this in Profile.",
   "Infusion reaction log hidden. You can change this in Profile.",
   "Treatments during this time:",
-  "Not set"
+  "Not set",
+  "We do not keep any of your data.",
+  "Everything you enter stays on this phone.",
+  "It is never sent to us or to anyone else. We cannot see it.",
+  "It leaves this phone only if you choose to export it or share it yourself."
 ]
