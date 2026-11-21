@@ -15,7 +15,7 @@ Version 1, effective September 25, 2026
 
 These terms apply to your use of Fabry Tracker (the "app"). "We" and "us" mean the developers of the app, Eric Wallace, MD, and Andrew Wallace. By tapping "Agree and continue" or using the app, you agree to these terms. If you do not agree, do not use the app.
 
-You must be 18 or older to accept these terms. A parent or legal guardian may use the app to keep a record for a child and accepts these terms on the child's behalf.
+You must be 16 or older to accept these terms. A parent or legal guardian may use the app to keep a record for a child and accepts these terms on the child's behalf.
 
 ## 2. Not medical advice
 

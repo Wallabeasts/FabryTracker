@@ -15,6 +15,7 @@ export const LANGS = [
   { id: "de", label: "Deutsch", locale: "de" },
   { id: "it", label: "Italiano", locale: "it" },
   { id: "pt", label: "Português", locale: "pt-BR" },
+  { id: "cs", label: "Čeština", locale: "cs" },
   { id: "nb", label: "Norsk (bokmål)", locale: "nb" },
   { id: "zh", label: "简体中文", locale: "zh-CN" },
   { id: "ja", label: "日本語", locale: "ja" },

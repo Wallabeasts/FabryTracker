@@ -25,6 +25,7 @@
 		ADDDC9A230B07E9B001549F7 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = ADDDC99F30B07E9B001549F7 /* InfoPlist.strings */; };
 		ADDDC9A330B07E9B001549F7 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = ADDDC99C30B07E9B001549F7 /* InfoPlist.strings */; };
 		ADDDC9A430B07E9B001549F7 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = ADDDC99930B07E9B001549F7 /* InfoPlist.strings */; };
+		C5C5C50430B07E9B001549F7 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = C5C5C50230B07E9B001549F7 /* InfoPlist.strings */; };
 		ADDDC9A530B07E9B001549F7 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = ADDDC99330B07E9B001549F7 /* InfoPlist.strings */; };
 		ADDDC9A630B07E9B001549F7 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = ADDDC99630B07E9B001549F7 /* InfoPlist.strings */; };
 		ADDDC9A730B07E9B001549F7 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = ADDDC98A30B07E9B001549F7 /* InfoPlist.strings */; };
@@ -102,6 +103,7 @@
 		ADDDC99230B07E9B001549F7 /* it */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = it; path = InfoPlist.strings; sourceTree = "<group>"; };
 		ADDDC99530B07E9B001549F7 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = InfoPlist.strings; sourceTree = "<group>"; };
 		ADDDC99830B07E9B001549F7 /* nb */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = nb; path = InfoPlist.strings; sourceTree = "<group>"; };
+		C5C5C50130B07E9B001549F7 /* cs */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = cs; path = InfoPlist.strings; sourceTree = "<group>"; };
 		ADDDC99B30B07E9B001549F7 /* pt-BR */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "pt-BR"; path = InfoPlist.strings; sourceTree = "<group>"; };
 		ADDDC99E30B07E9B001549F7 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = InfoPlist.strings; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -183,6 +185,7 @@
 				ADDDC99430B07E9B001549F7 /* it.lproj */,
 				ADDDC99730B07E9B001549F7 /* ja.lproj */,
 				ADDDC99A30B07E9B001549F7 /* nb.lproj */,
+				C5C5C50330B07E9B001549F7 /* cs.lproj */,
 				ADDDC99D30B07E9B001549F7 /* pt-BR.lproj */,
 				ADDDC9A030B07E9B001549F7 /* zh-Hans.lproj */,
 				9582B6822FE993A50072D4E8 /* SceneDelegate.swift */,
@@ -271,6 +274,14 @@
 				ADDDC99930B07E9B001549F7 /* InfoPlist.strings */,
 			);
 			path = nb.lproj;
+			sourceTree = "<group>";
+		};
+		C5C5C50330B07E9B001549F7 /* cs.lproj */ = {
+			isa = PBXGroup;
+			children = (
+				C5C5C50230B07E9B001549F7 /* InfoPlist.strings */,
+			);
+			path = cs.lproj;
 			sourceTree = "<group>";
 		};
 		ADDDC99D30B07E9B001549F7 /* pt-BR.lproj */ = {
@@ -391,6 +402,7 @@
 				en,
 				Base,
 				ar,
+				cs,
 				de,
 				es,
 				fr,
@@ -426,6 +438,7 @@
 				ADDDC9A230B07E9B001549F7 /* InfoPlist.strings in Resources */,
 				ADDDC9A330B07E9B001549F7 /* InfoPlist.strings in Resources */,
 				ADDDC9A430B07E9B001549F7 /* InfoPlist.strings in Resources */,
+				C5C5C50430B07E9B001549F7 /* InfoPlist.strings in Resources */,
 				ADDDC9A530B07E9B001549F7 /* InfoPlist.strings in Resources */,
 				ADDDC9A630B07E9B001549F7 /* InfoPlist.strings in Resources */,
 				ADDDC9A730B07E9B001549F7 /* InfoPlist.strings in Resources */,
@@ -572,6 +585,14 @@
 			isa = PBXVariantGroup;
 			children = (
 				ADDDC99830B07E9B001549F7 /* nb */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+		C5C5C50230B07E9B001549F7 /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				C5C5C50130B07E9B001549F7 /* cs */,
 			);
 			name = InfoPlist.strings;
 			sourceTree = "<group>";
