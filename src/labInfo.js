@@ -172,6 +172,10 @@ export const LAB_INFO = {
   sob: { what: "How short of breath you've felt, from 1 to 10.", where: "self", dir: "score" },
   chairRise: { what: "How hard it is to get up from a chair, from 0 (easy) to 10 (can't do it).", where: "self", dir: "score" },
   stiffness: { what: "How stiff your joints have felt, from 0 (not at all) to 10 (the most).", where: "self", dir: "score" },
+
+  // Enzyme infusions
+  infRxn: { what: "A reaction to an enzyme infusion, during it or in the hours after. It can include chills, fever, flushing, itching, hives, nausea, a headache, chest tightness or trouble breathing. You rate how bad it was, from 1 (mild) to 10 (worst).",
+    where: "self", dir: "score", extra: "Tell your care team about every reaction. They may change your premedications or slow the infusion. The dots under the graph show the premedications you took before each infusion." },
 };
 
 // Condition-specific changes.
@@ -187,7 +191,7 @@ const BY_COND = {
 };
 
 // Chart and field ids that share one entry.
-const ALIAS = { hlL4000: "hearingL", hlL8000: "hearingL", hlR4000: "hearingR", hlR8000: "hearingR", eyeVisit: "eyeVisits", eyeNotes: "eyeVisits", stoneProc: "stoneProcs", stoneSide: "stoneProcs", stoneNotes: "stoneProcs" };
+const ALIAS = { hlL4000: "hearingL", hlL8000: "hearingL", hlR4000: "hearingR", hlR8000: "hearingR", eyeVisit: "eyeVisits", eyeNotes: "eyeVisits", stoneProc: "stoneProcs", stoneSide: "stoneProcs", stoneNotes: "stoneProcs", infPremeds: "infRxn", infMin: "infRxn" };
 
 export function labInfo(id, condId) {
   const key = ALIAS[id] || id;

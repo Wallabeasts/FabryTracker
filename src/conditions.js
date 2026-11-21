@@ -53,6 +53,19 @@ export const PALETTES = {
     dark: { accent: "#9AA0AA", "accent-soft": "#26323E", hero: "#232935", "hero-text": "#C5C7CB", "hero-sub": "#B0B3B9" } },
 };
 
+// Premedications taken before an enzyme infusion. Each is a box to tick when an infusion reaction is logged, and a
+// medicine in Treatments (group "premeds") that is marked on the infusion reaction graph. The ids are shared.
+export const PREMEDS = [
+  { id: "apap", name: "Acetaminophen (Tylenol)", short: "Tylenol", color: "#1D5FA8" },
+  { id: "benadryl", name: "Diphenhydramine (Benadryl)", short: "Benadryl", color: "#B0457A" },
+  { id: "pepcid", name: "Famotidine (Pepcid)", short: "Pepcid", color: "#1F7A5A" },
+  { id: "claritin", name: "Loratadine (Claritin)", short: "Claritin", color: "#9A6200" },
+  { id: "allegra", name: "Fexofenadine (Allegra)", short: "Allegra", color: "#6B4FA0" },
+  { id: "cromolyn", name: "Cromolyn", short: "Cromolyn", color: "#0F6E78" },
+  { id: "solumedrol", name: "Methylprednisolone (Solu-Medrol)", short: "Solu-Medrol", color: "#B5651D" },
+];
+const PREMED_IDS = PREMEDS.map((x) => x.id);
+
 // Lab tests and measurements added for the new conditions. Fabry's own tests are defined in App.jsx.
 // dp: decimals shown in U.S. units. eu: { unit, f (multiply), a (add, optional), dp, ref }.
 export const METRICS_EXTRA = [
@@ -142,6 +155,12 @@ export const METRICS_EXTRA = [
   { id: "eyeVisit", label: "Ophthalmology appointment", short: "Eye appointment", unit: "", dp: 0, kind: "yesno", noun: "visit", seen: "Yes on" },
   { id: "eyeNotes", label: "Recommendations from the eye visit", short: "Eye visit notes", unit: "", dp: 0, kind: "text" },
   { id: "nab", label: "Neutralizing antibodies", short: "Neutralizing antibodies", unit: "", dp: 0, kind: "yesno", noun: "test", seen: "Positive on" },
+  // A reaction to an enzyme infusion: how bad it was (1 to 10), the premedications taken before the infusion (saved as
+  // their ids joined with commas, like "apap,benadryl"), and how long the infusion ran, in minutes.
+  { id: "infRxn", label: "Infusion-related reaction (1–10)", short: "Infusion reaction", unit: "/10", dp: 0 },
+  { id: "infPremeds", label: "Premedications before the infusion", short: "Premedications", unit: "", dp: 0, kind: "multi",
+    options: PREMEDS.map((x) => ({ value: x.id, label: x.name })) },
+  { id: "infMin", label: "Infusion time", short: "Infusion time", unit: "min", dp: 0 },
   // High-frequency hearing (pure-tone audiogram) thresholds in dB HL, for each ear.
   ...["L", "R"].flatMap((ear) => [4000, 8000].map((hz) => ({
     id: `hl${ear}${hz}`, label: `${ear === "L" ? "Left" : "Right"} ear, ${hz} Hz`, short: `${ear === "L" ? "Left" : "Right"} ${hz} Hz`,
@@ -207,12 +226,13 @@ export const MED_GROUPS_EXTRA = [
   { id: "alstrom", label: "Alström therapies", specific: true, charts: ["weight", "bmi", "hba1c", "tg", "lvef"] },
   { id: "lipids2", label: "Triglycerides", charts: ["tg"] },
   { id: "heart", label: "Heart", charts: ["lvef", "lvedd", "lvmi"] },
-  { id: "gaucher", label: "Gaucher therapies", specific: true, charts: ["lysoGb1", "chito", "trap", "ace", "ccl18", "hgb", "plt", "pt", "ptt", "inr", "spleenMN", "liverMN", "alt", "ast", "dexaT", "dexaZ", "symptoms", "events", "qol", "mobility"] },
+  { id: "gaucher", label: "Gaucher therapies", specific: true, charts: ["lysoGb1", "chito", "trap", "ace", "ccl18", "hgb", "plt", "pt", "ptt", "inr", "spleenMN", "liverMN", "alt", "ast", "dexaT", "dexaZ", "symptoms", "events", "qol", "mobility", "infRxn"] },
   { id: "bone", label: "Bone health", charts: ["events", "dexaT", "dexaZ"] },
-  { id: "pompe", label: "Pompe therapies", specific: true, charts: ["hex4", "ck", "alt", "ast", "rhgaa", "fvc", "fvcSupine", "fev1", "ivs", "lvmi", "sixMWT", "stairs10", "chairRise", "qol", "symptoms", "events"] },
+  { id: "pompe", label: "Pompe therapies", specific: true, charts: ["hex4", "ck", "alt", "ast", "rhgaa", "fvc", "fvcSupine", "fev1", "ivs", "lvmi", "sixMWT", "stairs10", "chairRise", "qol", "symptoms", "events", "infRxn"] },
   { id: "breathing", label: "Breathing support", charts: ["fvc", "fvcSupine", "fev1", "sob", "headache"] },
   { id: "mps", label: "MPS therapies", specific: true, charts: ["ugag", "lvef", "fvc", "fev1", "sixMWT", "stiffness", "heightCm", "liverMN", "spleenMN", "symptoms"] },
   { id: "replacement", label: "Dialysis and transplant", charts: ["egfr"] },
+  { id: "premeds", label: "Premedications", charts: ["infRxn"] },
 ];
 
 // Medicines added for the new conditions (Fabry's are in App.jsx).
@@ -294,6 +314,8 @@ export const MEDS_EXTRA = [
   { id: "dialysis", group: "replacement", name: "Dialysis", short: "Dialysis", color: "#5D6D7E" },
   { id: "kidneyTx", group: "replacement", name: "Kidney transplant", short: "Kidney transplant", color: "#1F7A5A" },
   { id: "liverKidneyTx", group: "replacement", name: "Liver and kidney transplant", short: "Liver-kidney transplant", color: "#0F6E78" },
+  // Shared: premedications before an enzyme infusion (Fabry, Gaucher, Pompe)
+  ...PREMEDS.map((x) => ({ id: x.id, group: "premeds", name: x.name, short: x.short, color: x.color })),
 ];
 
 // The nine sample visit dates, shared by every condition's sample data.
@@ -329,6 +351,7 @@ export const CONDITIONS = [
     ],
     categories: [
       { id: "fabry", label: "Fabry specific", charts: ["gb3", "lysoGb3", "ada", "nab"] },
+      { id: "infusions", label: "Infusions", charts: ["infRxn"] },
       { id: "kidney", label: "Kidney", charts: ["egfr", "uacr", "upcr"] },
       { id: "heart", label: "Heart", charts: ["lvmi", "ivs", "troponin", "t1", "lge", "palpitations"] },
       { id: "neuro", label: "Neurologic", charts: ["symptoms"] },
@@ -346,7 +369,9 @@ export const CONDITIONS = [
       { id: "palpitations", title: "Palpitations today", chartTitle: "Days with palpitations", types: ["palpitations"], daily: true },
       { id: "migraine", title: "Migraine today", chartTitle: "Days with a migraine", types: ["migraine"], daily: true },
     ],
-    meds: ["migalastat", "agala", "agalb", "pegun", "trial", ...kidneyCore, "statin", "gabapentin", "pregabalin", "carbamazepine", "amitriptyline", "opioid", "linaclotide", "agalEnzyme", "furosemide", "compression", "custom"],
+    meds: ["migalastat", "agala", "agalb", "pegun", "trial", ...kidneyCore, "statin", "gabapentin", "pregabalin", "carbamazepine", "amitriptyline", "opioid", "linaclotide", "agalEnzyme", "furosemide", "compression", ...PREMED_IDS, "custom"],
+    // The quick log asks about a reaction to an enzyme infusion (how bad, premedications, how long it ran).
+    infusionLog: true,
     trials: "Fabry disease",
     pubmed: '"fabry disease"[tiab]',
     topics: [
@@ -968,6 +993,7 @@ export const CONDITIONS = [
     ],
     categories: [
       { id: "gaucher", label: "Gaucher specific", charts: ["lysoGb1", "chito", "trap", "ace", "ccl18"] },
+      { id: "infusions", label: "Infusions", charts: ["infRxn"] },
       { id: "blood", label: "Hematology", charts: ["hgb", "plt", "pt", "ptt", "inr"] },
       { id: "organs", label: "Liver and spleen", charts: ["spleenMN", "liverMN", "alt", "ast"] },
       { id: "bones", label: "Bones and how you feel", charts: ["dexaT", "dexaZ", "symptoms", "events"] },
@@ -988,7 +1014,8 @@ export const CONDITIONS = [
       { id: "events", title: "Bone crisis", chartTitle: "Bone crises", types: ["boneCrisis"] },
       { id: "seizure", title: "Seizure", chartTitle: "Seizures", types: ["seizure"] },
     ],
-    meds: ["imiglucerase", "velaglucerase", "taliglucerase", "eliglustat", "miglustatGD", "gaucherTrial", "bisphosphonate", "custom"],
+    meds: ["imiglucerase", "velaglucerase", "taliglucerase", "eliglustat", "miglustatGD", "gaucherTrial", "bisphosphonate", ...PREMED_IDS, "custom"],
+    infusionLog: true,
     trials: "Gaucher Disease",
     pubmed: '"gaucher disease"[tiab]',
     topics: [
@@ -1050,6 +1077,7 @@ export const CONDITIONS = [
     ],
     categories: [
       { id: "pompe", label: "Pompe specific", charts: ["hex4", "ck", "ast", "alt", "rhgaa"] },
+      { id: "infusions", label: "Infusions", charts: ["infRxn"] },
       { id: "breathing", label: "Breathing", charts: ["fvc", "fvcSupine", "fev1", "sob", "headache"] },
       { id: "heart", label: "Heart (cardiac)", charts: ["ivs", "lvmi"] },
       { id: "walking", label: "Walking and falls", charts: ["sixMWT", "stairs10", "chairRise", "events"] },
@@ -1070,7 +1098,8 @@ export const CONDITIONS = [
       { id: "hosp", title: "Hospitalization", chartTitle: "Hospitalizations", types: ["hosp"], askNote: "What was the hospitalization for?" },
     ],
     labels: { alt: "ALT (liver and muscle enzyme)" },
-    meds: ["alglucosidase", "avalglucosidase", "cipaglucosidase", "pompeTrial", "niv", "custom"],
+    meds: ["alglucosidase", "avalglucosidase", "cipaglucosidase", "pompeTrial", "niv", ...PREMED_IDS, "custom"],
+    infusionLog: true,
     trials: "Pompe Disease",
     pubmed: '("pompe disease"[tiab] OR "acid maltase deficiency"[tiab] OR "glycogen storage disease type II"[tiab])',
     topics: [
@@ -1112,6 +1141,9 @@ export const CONDITIONS = [
         { med: "avalglucosidase", start: "2022-03-01", startDose: "20 mg/kg every 2 weeks" },
         { med: "niv", start: "2023-09-01", startDose: "BiPAP at night" },
       ],
+      // Reactions after the switch to Nexviazyme: date, score, premedications, minutes the infusion ran.
+      infusions: [["2022-03-15", 6, "apap,benadryl", 240], ["2022-03-29", 5, "apap,benadryl", 300],
+        ["2022-04-12", 3, "apap,benadryl,pepcid", 360], ["2022-05-10", 1, "apap,benadryl,pepcid", 360]],
       events: [["fall", 330], ["fall", 200], ["fall", 75],
         ["headacheYes", 340], ["headacheYes", 310], ["headacheYes", 290], ["headacheNo", 270], ["headacheYes", 240],
         ["headacheNo", 180], ["headacheNo", 120], ["headacheYes", 95], ["headacheNo", 60], ["headacheNo", 30], ["headacheNo", 8]],
