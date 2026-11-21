@@ -2679,8 +2679,8 @@ function ThemePreview({ id }) {
 // DRAFT for legal review. Changing `version` makes every user accept the new terms before continuing.
 const TERMS_KEY = "fabry-tracker-terms";
 const TERMS = {
-  version: "6",
-  effective: "October 4, 2026",
+  version: "7",
+  effective: "November 20, 2026",
   summary: [
     `${APP_INFO.name} is a personal record-keeping tool. It does not give medical advice, and it does not diagnose or treat any condition.`,
     "You choose what to enter or import, and you are responsible for checking it. Charts and calculations, such as eGFR and unit conversions, can contain errors.",
@@ -2695,7 +2695,7 @@ const TERMS = {
       h: "1. About these terms",
       p: [
         `These terms apply to your use of ${APP_INFO.name} (the "app"). "We" and "us" mean the developers of the app, ${APP_INFO.developers.map((d) => d.name).join(", and ")}. By tapping "Agree and continue" or using the app, you agree to these terms. If you do not agree, do not use the app.`,
-        "You must be 18 or older to accept these terms. A parent or legal guardian may use the app to keep a record for a child and accepts these terms on the child's behalf.",
+        "You must be 16 or older to accept these terms. A parent or legal guardian may use the app to keep a record for a child and accepts these terms on the child's behalf.",
       ],
     },
     {
