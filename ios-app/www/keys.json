@@ -3145,5 +3145,13 @@
   "A reaction to an enzyme infusion, during it or in the hours after. It can include chills, fever, flushing, itching, hives, nausea, a headache, chest tightness or trouble breathing. You rate how bad it was, from {0} (mild) to {1} (worst).",
   "Tell your care team about every reaction. They may change your premedications or slow the infusion. The dots under the graph show the premedications you took before each infusion.",
   "Infusion reaction {0} /{1}, Premedications Acetaminophen (Tylenol), Diphenhydramine (Benadryl), Infusion time {2} h",
-  "Infusion reaction {0} /{1}, Premedications Acetaminophen (Tylenol), Diphenhydramine (Benadryl), Famotidine (Pepcid), Infusion time {2} h"
+  "Infusion reaction {0} /{1}, Premedications Acetaminophen (Tylenol), Diphenhydramine (Benadryl), Famotidine (Pepcid), Infusion time {2} h",
+  "Export your results",
+  "Tap Export charts (PDF) for a copy of your charts to print or bring to appointments. Tap Export spreadsheet (CSV) for a file of all your results, which is easiest to share with your care team. Neither file can be locked, so only send them to people you trust.",
+  "To ask an artificial intelligence (AI) assistant about your results, export the spreadsheet (CSV) and paste it in. My Rare Disease Tracker has no control over what an AI answers, the questions asked or the data entered into the app, so it does not take responsibility for any AI's answers. AI doesn't replace your doctor.",
+  "Are you on infusions (enzyme replacement therapy)?",
+  "Are they on infusions (enzyme replacement therapy)?",
+  "Choose No to hide the infusion reaction log. Reactions already logged stay on the Trends page.",
+  "Yes adds a place to log infusion reactions. You can change this in Profile.",
+  "Infusion reaction log hidden. You can change this in Profile."
 ]

@@ -3145,5 +3145,13 @@
   "Reakce na infuzi enzymu, během ní nebo v hodinách po ní. Může zahrnovat zimnici, horečku, zarudnutí, svědění, kopřivku, nevolnost, bolest hlavy, tlak na hrudi nebo potíže s dýcháním. Sami hodnotíte, jak silná byla, od {0} (mírná) do {1} (nejhorší).",
   "O každé reakci řekněte svému ošetřujícímu týmu. Může změnit vaši premedikaci nebo infuzi zpomalit. Tečky pod grafem ukazují premedikaci, kterou jste užili před každou infuzí.",
   "Reakce na infuzi {0} /{1}, Premedikace Paracetamol (Tylenol), Difenhydramin (Benadryl), Doba infuze {2} h",
-  "Reakce na infuzi {0} /{1}, Premedikace Paracetamol (Tylenol), Difenhydramin (Benadryl), Famotidin (Pepcid), Doba infuze {2} h"
+  "Reakce na infuzi {0} /{1}, Premedikace Paracetamol (Tylenol), Difenhydramin (Benadryl), Famotidin (Pepcid), Doba infuze {2} h",
+  "Export vašich výsledků",
+  "Klepnutím na Exportovat grafy (PDF) získáte kopii svých grafů k vytištění nebo na návštěvy. Klepnutím na Exportovat tabulku (CSV) získáte soubor se všemi výsledky, který se nejsnáze sdílí s vaším ošetřujícím týmem. Ani jeden z těchto souborů nelze zamknout, proto je posílejte jen lidem, kterým důvěřujete.",
+  "Chcete-li se na své výsledky zeptat asistenta umělé inteligence (AI), exportujte tabulku (CSV) a vložte ji do něj. My Rare Disease Tracker nemá žádnou kontrolu nad tím, co AI odpoví, nad položenými otázkami ani nad daty zadanými do aplikace, a proto za odpovědi žádné AI nenese odpovědnost. AI nenahrazuje vašeho lékaře.",
+  "Dostáváte infuze (enzymovou substituční terapii)?",
+  "Dostává tato osoba infuze (enzymovou substituční terapii)?",
+  "Volbou Ne skryjete záznam reakcí na infuzi. Již zaznamenané reakce zůstanou na stránce Trendy.",
+  "Ano přidá místo pro záznam reakcí na infuzi. Můžete to změnit v Profilu.",
+  "Záznam reakcí na infuzi je skrytý. Můžete to změnit v Profilu."
 ]

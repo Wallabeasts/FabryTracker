@@ -3145,5 +3145,13 @@
   "En reaksjon på en enzyminfusjon, underveis eller i timene etterpå. Den kan omfatte frysninger, feber, rødme, kløe, elveblest, kvalme, hodepine, tetthet i brystet eller pustevansker. Du vurderer hvor kraftig den var, fra {0} (mild) til {1} (verst).",
   "Fortell behandlingsteamet ditt om hver reaksjon. De kan endre premedisineringen eller senke infusjonshastigheten. Prikkene under diagrammet viser premedisineringen du tok før hver infusjon.",
   "Infusjonsreaksjon {0} /{1}, Premedisinering Paracetamol (Tylenol), Difenhydramin (Benadryl), Infusjonstid {2} t",
-  "Infusjonsreaksjon {0} /{1}, Premedisinering Paracetamol (Tylenol), Difenhydramin (Benadryl), Famotidin (Pepcid), Infusjonstid {2} t"
+  "Infusjonsreaksjon {0} /{1}, Premedisinering Paracetamol (Tylenol), Difenhydramin (Benadryl), Famotidin (Pepcid), Infusjonstid {2} t",
+  "Eksporter resultatene dine",
+  "Trykk på Eksporter diagrammer (PDF) for å få en kopi av diagrammene til å skrive ut eller ta med til kontroller. Trykk på Eksporter regneark (CSV) for å få en fil med alle resultatene, som er enklest å dele med behandlingsteamet. Ingen av filene kan låses, så send dem bare til personer du stoler på.",
+  "Hvis du vil spørre en assistent med kunstig intelligens (KI) om resultatene dine, eksporterer du regnearket (CSV) og limer det inn. My Rare Disease Tracker har ingen kontroll over hva en KI svarer, hvilke spørsmål som stilles, eller hvilke data som er lagt inn i appen, og tar derfor ikke ansvar for svarene fra noen KI. KI erstatter ikke legen din.",
+  "Får du infusjoner (enzymerstatningsbehandling)?",
+  "Får personen infusjoner (enzymerstatningsbehandling)?",
+  "Velg Nei for å skjule registreringen av infusjonsreaksjoner. Reaksjoner som allerede er registrert, blir stående på Trender-siden.",
+  "Ja legger til et sted for å registrere infusjonsreaksjoner. Du kan endre dette i Profil.",
+  "Registrering av infusjonsreaksjoner er skjult. Du kan endre dette i Profil."
 ]

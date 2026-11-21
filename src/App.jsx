@@ -472,9 +472,9 @@ const MED_GROUPS = [
 
 const MEDS = [
   { id: "migalastat", group: "fabry", name: "Migalastat (Galafold)", short: "Galafold", color: hue("#C0392B") },
-  { id: "agala", group: "fabry", name: "Agalsidase alfa (Replagal)", short: "Replagal", color: hue("#D35400") },
-  { id: "agalb", group: "fabry", name: "Agalsidase beta (Fabrazyme)", short: "Fabrazyme", color: hue("#1D5FA8") },
-  { id: "pegun", group: "fabry", name: "Pegunigalsidase alfa (Elfabrio)", short: "Elfabrio", color: hue("#B0457A") },
+  { id: "agala", group: "fabry", name: "Agalsidase alfa (Replagal)", short: "Replagal", color: hue("#D35400"), infusion: true },
+  { id: "agalb", group: "fabry", name: "Agalsidase beta (Fabrazyme)", short: "Fabrazyme", color: hue("#1D5FA8"), infusion: true },
+  { id: "pegun", group: "fabry", name: "Pegunigalsidase alfa (Elfabrio)", short: "Elfabrio", color: hue("#B0457A"), infusion: true },
   { id: "trial", group: "fabry", trial: true, name: "Clinical trial drug", short: "Trial drug", color: hue("#8E44AD") },
   { id: "acei", group: "kidney", name: "ACE inhibitor (e.g. lisinopril, enalapril)", short: "ACEi", color: hue("#9A6200") },
   { id: "arb", group: "kidney", name: "Angiotensin receptor blocker (e.g. losartan, valsartan, irbesartan)", short: "ARB", color: hue("#6B4FA0") },
@@ -605,7 +605,8 @@ const EMPTY = { profile: { mutation: "", phenotype: "", birthDate: "", sex: "" }
 
 const SAMPLE = {
   condition: "fabry",
-  profile: { mutation: "c.644A>G (p.N215S)", phenotype: "Late-onset", birthDate: "1978-04-12", sex: "Male" },
+  // On a capsule (migalastat), so not on infusions.
+  profile: { mutation: "c.644A>G (p.N215S)", phenotype: "Late-onset", birthDate: "1978-04-12", sex: "Male", infusions: "no" },
   family: [
     { id: "f1", name: "Linda", relation: "mother", sex: "Female", status: "positive", tested: "2019-08-20", notes: "Followed by cardiology" },
     { id: "f2", name: "Karen", relation: "sister", sex: "Female", status: "untested", tested: "", notes: "" },
@@ -761,6 +762,21 @@ const durText = (min) => {
   const r = n % 60;
   return h && r ? `${h} h ${r} min` : h ? `${h} h` : `${r} min`;
 };
+// Whether the infusion reaction log shows for a record. The Profile question decides ("yes" or "no"); until it's
+// answered, an infusion therapy listed under Treatments as being taken now counts as yes.
+//   on: on infusions, so the quick log asks about reactions.   ask: not known yet, so the quick log asks.
+//   show: the Infusions section is on the Trends and Add pages (also when reactions were already logged).
+//   answer: what the Profile question shows.
+function infusionStatus(data, cond) {
+  if (!cond.infusionLog) return { on: false, ask: false, show: false, answer: "" };
+  const answer = ["yes", "no"].includes(data.profile.infusions) ? data.profile.infusions : "";
+  const now = today();
+  const listed = data.meds.some((m) => (MEDS.find((x) => x.id === effectiveMed(m).med) || {}).infusion
+    && m.start <= now && (!m.stop || m.stop >= now));
+  const on = answer === "yes" || (!answer && listed);
+  return { on, ask: !answer && !listed, show: on || data.entries.some(isInfusion), answer: answer || (listed ? "yes" : "") };
+}
+const infusionQuestion = (self) => (self ? "Are you on infusions (enzyme replacement therapy)?" : "Are they on infusions (enzyme replacement therapy)?");
 // The choices for how long an infusion took: every 15 minutes up to 12 hours.
 const DURATION_CHOICES = Array.from({ length: 48 }, (_, i) => (i + 1) * 15);
 
@@ -2216,6 +2232,22 @@ function InfusionInputs({ form, setForm }) {
           </Field>
         </>
       )}
+    </div>
+  );
+}
+
+// Quick-log question shown until Profile knows whether the person is on infusions. Yes adds the infusion reaction
+// question; No hides it (Profile can change it back).
+function AskInfusions({ question, onAnswer }) {
+  const btn = "fx-press py-3 rounded-md text-base font-bold focus:outline-none focus:ring-2";
+  return (
+    <div className="mt-4" data-ask-infusions>
+      <p className="text-sm mb-2" style={{ color: C.muted }}>{question}</p>
+      <div className="grid grid-cols-2 gap-2">
+        <button onClick={() => onAnswer("yes")} className={btn} style={{ border: `2px solid ${C.accent}`, color: C.accent, background: C.surface }}>Yes</button>
+        <button onClick={() => onAnswer("no")} className={btn} style={{ border: `2px solid ${C.accent}`, color: C.accent, background: C.surface }}>No</button>
+      </div>
+      <p className="text-xs mt-2" style={{ color: C.muted }}>Yes adds a place to log infusion reactions. You can change this in Profile.</p>
     </div>
   );
 }
@@ -4054,6 +4086,21 @@ const ALL_TOUR_STEPS = [
   },
   {
     tab: "profile",
+    target: "profile-export",
+    fallback: "profile-backup",
+    top: true,
+    title: "Export your results",
+    body: "Tap Export charts (PDF) for a copy of your charts to print or bring to appointments. Tap Export spreadsheet (CSV) for a file of all your results, which is easiest to share with your care team. Neither file can be locked, so only send them to people you trust.",
+  },
+  {
+    tab: "profile",
+    target: "profile-ai",
+    fallback: "profile-backup",
+    title: "Using artificial intelligence (AI) with your results",
+    body: `To ask an artificial intelligence (AI) assistant about your results, export the spreadsheet (CSV) and paste it in. ${APP_INFO.name} has no control over what an AI answers, the questions asked or the data entered into the app, so it does not take responsibility for any AI's answers. AI doesn't replace your doctor.`,
+  },
+  {
+    tab: "profile",
     target: "profile-restore",
     fallback: "profile-backup",
     title: "Restore from a backup",
@@ -4140,7 +4187,8 @@ function Tour({ onClose, onSample, hasEntries, onTab, quickLog = true }) {
       if (el && getComputedStyle(el).position !== "fixed" && !el.closest("nav, .sticky")) {
         // Tall parts are lined up with the top of the screen so their start shows; short ones are centered.
         // Steps with a picture need room for a tall card, so their part goes to the top too.
-        const tall = step.image || el.getBoundingClientRect().height > window.innerHeight * 0.45;
+        // A step can also ask for the top (step.top), so the card fits under a part in the middle of a page.
+        const tall = step.image || step.top || el.getBoundingClientRect().height > window.innerHeight * 0.45;
         if (tall) {
           const top = el.getBoundingClientRect().top + window.scrollY - 80;
           window.scrollTo({ top, behavior: REDUCED ? "auto" : "smooth" });
@@ -5186,6 +5234,8 @@ function sanitizeRecord(p) {
       phenotype: str(prof.phenotype, 60),
       birthDate: isDate(prof.birthDate) ? prof.birthDate : "",
       sex: ["Female", "Male"].includes(prof.sex) ? prof.sex : "",
+      // Whether they're on infusions (shows or hides the infusion reaction log); "" until it's answered.
+      infusions: ["yes", "no"].includes(prof.infusions) ? prof.infusions : "",
       // Where the person is, for trial alerts. Only ever used on this phone.
       country: typeof prof.country === "string" && /^[A-Z]{2}$/.test(prof.country) ? prof.country : "",
       city: str(prof.city, 80),
@@ -7617,11 +7667,17 @@ function FabryTracker() {
   const [status, setStatus] = useState("");
   const [tab, setTab] = useState("trends");
   const [form, setForm] = useState({ date: today() });
+  // The infusion reaction log (quick log, Trends, Add) and the premedications under Treatments are only for someone
+  // on infusions.
+  const infusion = infusionStatus(data, cond);
+  const shownCategories = cond.categories.filter((c) => infusion.show || !c.charts.includes("infRxn"));
+  const shownCharts = shownCategories.flatMap((c) => c.charts);
+  const medChoices = cond.meds.filter((id) => infusion.on || (MEDS.find((m) => m.id === id) || {}).group !== "premeds");
   const [medForm, setMedForm] = useState({ med: cond.meds[0], start: today(), stop: "", startDose: "", customName: "", charts: [] });
   // A different condition offers different treatments, so the form starts from that condition's first one.
   useEffect(() => {
-    if (!cond.meds.includes(medForm.med)) setMedForm((f) => ({ ...f, med: cond.meds[0], customName: "", charts: [] }));
-  }, [cond.id]);
+    if (!medChoices.includes(medForm.med)) setMedForm((f) => ({ ...f, med: medChoices[0], customName: "", charts: [] }));
+  }, [cond.id, infusion.on]);
   const [doseForms, setDoseForms] = useState({});
   const [openDose, setOpenDose] = useState("");
   const [editMed, setEditMed] = useState(null); // treatment being corrected
@@ -7944,6 +8000,15 @@ function FabryTracker() {
     setData((d) => ({ ...d, entries: [...d.entries, { id, date: today(), infRxn: f.sev,
       ...(picked ? { infPremeds: picked } : {}), ...(hasVal(f.min) ? { infMin: Number(f.min) } : {}) }] }));
     setToast({ text: `Infusion reaction ${f.sev}/10 logged for today`, undo: () => setData((d) => ({ ...d, entries: d.entries.filter((e) => e.id !== id) })) });
+  };
+  // The answer to "Are you on infusions?", from the quick log. No hides the infusion reaction log.
+  const answerInfusions = (v) => {
+    const before = data.profile.infusions || "";
+    setData((d) => ({ ...d, profile: { ...d.profile, infusions: v } }));
+    if (v === "no") {
+      setToast({ text: "Infusion reaction log hidden. You can change this in Profile.",
+        undo: () => setData((d) => ({ ...d, profile: { ...d.profile, infusions: before } })) });
+    }
   };
   // Premedications listed under Treatments as being taken today. The quick log starts with these ticked.
   const standingPremeds = multiValues(metricById("infPremeds"), data.meds
@@ -8538,7 +8603,10 @@ function FabryTracker() {
     const rec = { id: uid(), med: r.med, start: medForm.start, stop: medForm.stop, startDose: r.startDose, doses: [] };
     if (r.customName) rec.customName = r.customName;
     if (r.med === "custom") rec.charts = medForm.charts;
-    setData((d) => ({ ...d, meds: [...d.meds, rec] }));
+    // Starting an infusion therapy after answering "not on infusions" puts the infusion reaction log back.
+    const startsInfusions = Boolean((MEDS.find((m) => m.id === r.med) || {}).infusion);
+    setData((d) => ({ ...d, meds: [...d.meds, rec],
+      profile: startsInfusions && d.profile.infusions === "no" ? { ...d.profile, infusions: "" } : d.profile }));
     setMedForm({ med: medForm.med, start: today(), stop: "", startDose: "", customName: "", charts: medForm.med === "custom" ? [] : medForm.charts });
   };
 
@@ -9291,7 +9359,8 @@ function FabryTracker() {
                   )}
                 </div>
               ))}
-              {cond.infusionLog && <QuickInfusion standing={standingPremeds} onSave={logInfusion} />}
+              {infusion.on && <QuickInfusion standing={standingPremeds} onSave={logInfusion} />}
+              {infusion.ask && <AskInfusions question={infusionQuestion(activePerson.id === SELF)} onAnswer={answerInfusions} />}
               {cond.quickProcedure && (
                 <QuickProcedure onSave={(f) => {
                   const id = uid();
@@ -9381,7 +9450,7 @@ function FabryTracker() {
                 </div>
               );
               const afterFound = ot && cond.categories.some((c) => c.id === ot.after);
-              return [...cond.categories.flatMap((c) => {
+              return [...shownCategories.flatMap((c) => {
               const isOpen = !collapsed[c.id];
               return [(
                 <div key={c.id} className="mb-2">
@@ -9457,7 +9526,7 @@ function FabryTracker() {
                   onChange={(e) => setForm({ ...form, date: e.target.value })} />
               </Field>
               <p className="text-sm mb-3" style={{ color: C.muted }}>Fill in only the results you have from this date.</p>
-              {cond.categories.filter((c) => addFields(c).length || c.charts.includes("egfr") || c.charts.includes("pta") || c.charts.includes("infRxn")).map((c) => (
+              {shownCategories.filter((c) => addFields(c).length || c.charts.includes("egfr") || c.charts.includes("pta") || c.charts.includes("infRxn")).map((c) => (
                 <div key={c.id}>
                   <h3 className="text-base font-bold mt-4 mb-2 pb-1" style={{ color: C.accent, borderBottom: `1px solid ${C.line}` }}>
                     {c.label}
@@ -9577,12 +9646,12 @@ function FabryTracker() {
               <Field label="Treatment">
                 <select className={inputCls} style={inputStyle} value={medForm.med}
                   onChange={(e) => setMedForm({ ...medForm, med: e.target.value })}>
-                  {MED_GROUPS.filter((g) => cond.meds.some((id) => (MEDS.find((m) => m.id === id) || {}).group === g.id))
-                    .sort((a, b) => cond.meds.findIndex((id) => MEDS.find((m) => m.id === id).group === a.id)
-                      - cond.meds.findIndex((id) => MEDS.find((m) => m.id === id).group === b.id))
+                  {MED_GROUPS.filter((g) => medChoices.some((id) => (MEDS.find((m) => m.id === id) || {}).group === g.id))
+                    .sort((a, b) => medChoices.findIndex((id) => MEDS.find((m) => m.id === id).group === a.id)
+                      - medChoices.findIndex((id) => MEDS.find((m) => m.id === id).group === b.id))
                     .map((g) => (
                       <optgroup key={g.id} label={g.label}>
-                        {cond.meds.map((id) => MEDS.find((m) => m.id === id)).filter((m) => m && m.group === g.id)
+                        {medChoices.map((id) => MEDS.find((m) => m.id === id)).filter((m) => m && m.group === g.id)
                           .map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
                       </optgroup>
                     ))}
@@ -9604,7 +9673,7 @@ function FabryTracker() {
                   <div className="mb-3">
                     <span className="block text-sm mb-2" style={{ color: C.muted }}>Show this medicine on these graphs</span>
                     <div className="grid grid-cols-2 gap-2">
-                      {CHART_OPTIONS.filter((c) => condCharts(cond).includes(c.id)).map((c) => {
+                      {CHART_OPTIONS.filter((c) => shownCharts.includes(c.id)).map((c) => {
                         const on = medForm.charts.includes(c.id);
                         return (
                           <label key={c.id} className="flex items-center gap-2 text-sm px-2 py-2 rounded-md"
@@ -9631,13 +9700,13 @@ function FabryTracker() {
                     <p className="text-sm mb-3 p-2 rounded-md" role="status"
                       style={{ color: C.ink, background: C.accentSoft, border: `1px solid ${C.accent}` }}>
                       <span className="font-bold">{r.recognized.label}</span> is {kind}. It will be saved as {kind}
-                      {r.startDose ? ` (${r.startDose})` : ""} and shown on: {chartsForMed({ med: r.med }).filter((k) => condCharts(cond).includes(k)).map((k) => tr(chartName(k))).join(", ")}.
+                      {r.startDose ? ` (${r.startDose})` : ""} and shown on: {chartsForMed({ med: r.med }).filter((k) => shownCharts.includes(k)).map((k) => tr(chartName(k))).join(", ")}.
                     </p>
                   );
                 }
                 return medForm.med !== "custom" ? (
                   <p className="text-sm mb-3" style={{ color: C.muted }}>
-                    Shown on: {chartsForMed({ med: medForm.med }).filter((k) => condCharts(cond).includes(k)).map((k) => tr(chartName(k))).join(", ") || "no graphs"}
+                    Shown on: {chartsForMed({ med: medForm.med }).filter((k) => shownCharts.includes(k)).map((k) => tr(chartName(k))).join(", ") || "no graphs"}
                   </p>
                 ) : null;
               })()}
@@ -9681,7 +9750,7 @@ function FabryTracker() {
                         {m.stop ? `, stopped ${fmtDate(toT(m.stop))}` : ", ongoing"}
                       </div>
                       <div className="text-xs mt-1" style={{ color: C.muted }}>
-                        Shown on: {chartsForMed(m).filter((k) => condCharts(cond).includes(k)).map((k) => tr(chartName(k))).join(", ") || "no graphs"}
+                        Shown on: {chartsForMed(m).filter((k) => shownCharts.includes(k)).map((k) => tr(chartName(k))).join(", ") || "no graphs"}
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-1 ml-3">
@@ -10043,6 +10112,21 @@ function FabryTracker() {
                   </select>
                 </Field>
               )}
+              {cond.infusionLog && (
+                <div data-infusion-question>
+                  <Field label={infusionQuestion(activePerson.id === SELF)}>
+                    <select className={inputCls} style={inputStyle} value={infusion.answer}
+                      onChange={(e) => setData((d) => ({ ...d, profile: { ...d.profile, infusions: e.target.value } }))}>
+                      <option value="">Choose</option>
+                      <option value="yes">Yes</option>
+                      <option value="no">No</option>
+                    </select>
+                  </Field>
+                  <p className="text-sm -mt-2 mb-3" style={{ color: C.muted }}>
+                    Choose No to hide the infusion reaction log. Reactions already logged stay on the Trends page.
+                  </p>
+                </div>
+              )}
               <BirthDateField label="Birth date" style={inputStyle} value={data.profile.birthDate || ""}
                 onChange={(v) => setData((d) => ({ ...d, profile: { ...d.profile, birthDate: v } }))} />
               <Field label="Sex (used in the eGFR calculation)">
@@ -10095,7 +10179,7 @@ function FabryTracker() {
               A backup file can be restored into this app later, on this phone or a new one. Lock it with a password. A
               spreadsheet file is easiest to share with your care team.
             </p>
-            <div className="flex flex-wrap gap-2 mb-2">
+            <div className="flex flex-wrap gap-2 mb-2" data-tour="profile-export">
               <Button onClick={() => { setExported(null); setExportAsk("backup"); }}>Export backup (JSON)</Button>
               <Button kind="secondary" onClick={() => { setExported(null); setExportAsk("csv"); }}>Export spreadsheet (CSV)</Button>
               <Button kind="secondary" onClick={() => { setExported(null); setExportAsk("pdf"); }} disabled={pdfBusy || !data.entries.length}>
@@ -10143,7 +10227,7 @@ function FabryTracker() {
               </div>
             )}
 
-            <section aria-labelledby="ai-export" className="p-4 mb-4 rounded-lg" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
+            <section aria-labelledby="ai-export" data-tour="profile-ai" className="p-4 mb-4 rounded-lg" style={{ background: C.surface, border: `1px solid ${C.line}` }}>
               <h3 id="ai-export" className="text-base font-bold mb-1">Using artificial intelligence (AI) with your results</h3>
               <p className="text-sm mb-2">
                 Artificial intelligence (AI) doesn't replace your doctor. If you'd like, you can export the spreadsheet (CSV), then

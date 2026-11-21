@@ -3145,5 +3145,13 @@
   "Eine Reaktion auf eine Enzyminfusion, währenddessen oder in den Stunden danach. Dazu können Schüttelfrost, Fieber, Hautrötung, Juckreiz, Quaddeln, Übelkeit, Kopfschmerzen, Engegefühl in der Brust oder Atemnot gehören. Sie bewerten, wie stark sie war, von {0} (leicht) bis {1} (am schlimmsten).",
   "Informieren Sie Ihr Behandlungsteam über jede Reaktion. Es kann Ihre Prämedikation ändern oder die Infusion verlangsamen. Die Punkte unter dem Diagramm zeigen die Prämedikation vor jeder Infusion.",
   "Infusionsreaktion {0} /{1}, Prämedikation Paracetamol (Tylenol), Diphenhydramin (Benadryl), Infusionsdauer {2} Std.",
-  "Infusionsreaktion {0} /{1}, Prämedikation Paracetamol (Tylenol), Diphenhydramin (Benadryl), Famotidin (Pepcid), Infusionsdauer {2} Std."
+  "Infusionsreaktion {0} /{1}, Prämedikation Paracetamol (Tylenol), Diphenhydramin (Benadryl), Famotidin (Pepcid), Infusionsdauer {2} Std.",
+  "Ihre Ergebnisse exportieren",
+  "Tippen Sie auf „Diagramme exportieren (PDF)“, um eine Kopie Ihrer Diagramme zum Ausdrucken oder für Termine zu erhalten. Tippen Sie auf „Tabelle exportieren (CSV)“, um eine Datei mit allen Ergebnissen zu erhalten, die sich am einfachsten mit Ihrem Behandlungsteam teilen lässt. Beide Dateien können nicht gesperrt werden, senden Sie sie also nur an Personen, denen Sie vertrauen.",
+  "Wenn Sie einen KI-Assistenten (künstliche Intelligenz) zu Ihren Ergebnissen befragen möchten, exportieren Sie die Tabelle (CSV) und fügen Sie sie dort ein. My Rare Disease Tracker hat keinen Einfluss darauf, was eine KI antwortet, welche Fragen gestellt werden oder welche Daten in die App eingegeben wurden, und übernimmt daher keine Verantwortung für die Antworten einer KI. KI ersetzt nicht Ihre Ärztin oder Ihren Arzt.",
+  "Erhalten Sie Infusionen (Enzymersatztherapie)?",
+  "Erhält die Person Infusionen (Enzymersatztherapie)?",
+  "Wählen Sie „Nein“, um die Erfassung von Infusionsreaktionen auszublenden. Bereits erfasste Reaktionen bleiben auf der Seite „Verläufe“.",
+  "„Ja“ fügt eine Stelle zum Erfassen von Infusionsreaktionen hinzu. Sie können das im Profil ändern.",
+  "Erfassung von Infusionsreaktionen ausgeblendet. Sie können das im Profil ändern."
 ]

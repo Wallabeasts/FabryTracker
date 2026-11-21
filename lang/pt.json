@@ -3145,5 +3145,13 @@
   "Uma reação a uma infusão de enzima, durante a infusão ou nas horas seguintes. Pode incluir calafrios, febre, vermelhidão, coceira, urticária, náusea, dor de cabeça, aperto no peito ou dificuldade para respirar. Você avalia a intensidade, de {0} (leve) a {1} (a pior).",
   "Conte à sua equipe de saúde sobre cada reação. Ela pode mudar suas pré-medicações ou deixar a infusão mais lenta. Os pontos abaixo do gráfico mostram as pré-medicações que você tomou antes de cada infusão.",
   "Reação à infusão {0} /{1}, Pré-medicações Paracetamol (Tylenol), Difenidramina (Benadryl), Duração da infusão {2} h",
-  "Reação à infusão {0} /{1}, Pré-medicações Paracetamol (Tylenol), Difenidramina (Benadryl), Famotidina (Pepcid), Duração da infusão {2} h"
+  "Reação à infusão {0} /{1}, Pré-medicações Paracetamol (Tylenol), Difenidramina (Benadryl), Famotidina (Pepcid), Duração da infusão {2} h",
+  "Exportar seus resultados",
+  "Toque em Exportar gráficos (PDF) para ter uma cópia dos seus gráficos para imprimir ou levar às consultas. Toque em Exportar planilha (CSV) para ter um arquivo com todos os seus resultados, que é o mais fácil de compartilhar com a sua equipe de saúde. Nenhum dos dois arquivos pode ser protegido com senha, então envie apenas para pessoas em quem você confia.",
+  "Para perguntar a um assistente de inteligência artificial (IA) sobre seus resultados, exporte a planilha (CSV) e cole nele. O My Rare Disease Tracker não tem controle sobre o que uma IA responde, as perguntas feitas ou os dados inseridos no aplicativo e, por isso, não se responsabiliza pelas respostas de nenhuma IA. A IA não substitui o seu médico.",
+  "Você faz infusões (terapia de reposição enzimática)?",
+  "Essa pessoa faz infusões (terapia de reposição enzimática)?",
+  "Escolha Não para ocultar o registro de reações à infusão. As reações já registradas continuam na página Tendências.",
+  "Sim adiciona um lugar para registrar reações à infusão. Você pode mudar isso em Perfil.",
+  "Registro de reações à infusão oculto. Você pode mudar isso em Perfil."
 ]

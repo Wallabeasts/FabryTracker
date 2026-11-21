@@ -235,7 +235,7 @@ export const MED_GROUPS_EXTRA = [
   { id: "premeds", label: "Premedications", charts: ["infRxn"] },
 ];
 
-// Medicines added for the new conditions (Fabry's are in App.jsx).
+// Medicines added for the new conditions (Fabry's are in App.jsx). `infusion` marks enzyme therapies given by infusion.
 export const MEDS_EXTRA = [
   // Fabry: stomach and bowel
   { id: "linaclotide", group: "giMeds", name: "Linaclotide (Linzess)", short: "Linzess", color: "#00796B" },
@@ -287,17 +287,17 @@ export const MEDS_EXTRA = [
   { id: "fibrate", group: "lipids2", name: "Fibrate (fenofibrate)", short: "Fibrate", color: "#7A5C2E" },
   { id: "heartFailure", group: "heart", name: "Heart failure medicine (e.g. carvedilol, sacubitril/valsartan)", short: "Heart medicine", color: "#B3261E" },
   // Gaucher
-  { id: "imiglucerase", group: "gaucher", name: "Imiglucerase (Cerezyme)", short: "Cerezyme", color: "#1D5FA8" },
-  { id: "velaglucerase", group: "gaucher", name: "Velaglucerase alfa (VPRIV)", short: "VPRIV", color: "#C0392B" },
-  { id: "taliglucerase", group: "gaucher", name: "Taliglucerase alfa (Elelyso)", short: "Elelyso", color: "#B0457A" },
+  { id: "imiglucerase", group: "gaucher", name: "Imiglucerase (Cerezyme)", short: "Cerezyme", color: "#1D5FA8", infusion: true },
+  { id: "velaglucerase", group: "gaucher", name: "Velaglucerase alfa (VPRIV)", short: "VPRIV", color: "#C0392B", infusion: true },
+  { id: "taliglucerase", group: "gaucher", name: "Taliglucerase alfa (Elelyso)", short: "Elelyso", color: "#B0457A", infusion: true },
   { id: "eliglustat", group: "gaucher", name: "Eliglustat (Cerdelga)", short: "Cerdelga", color: "#1F7A5A" },
   { id: "miglustatGD", group: "gaucher", name: "Miglustat (Zavesca)", short: "Zavesca", color: "#9A6200" },
   { id: "gaucherTrial", group: "gaucher", trial: true, name: "Clinical trial drug", short: "Trial drug", color: "#8E44AD" },
   { id: "bisphosphonate", group: "bone", name: "Bisphosphonate (alendronate, zoledronic acid)", short: "Bisphosphonate", color: "#5D4037" },
   // Pompe
-  { id: "alglucosidase", group: "pompe", name: "Alglucosidase alfa (Lumizyme, Myozyme)", short: "Lumizyme", color: "#1D5FA8" },
-  { id: "avalglucosidase", group: "pompe", name: "Avalglucosidase alfa (Nexviazyme, Nexviadyme)", short: "Nexviazyme", color: "#C0392B" },
-  { id: "cipaglucosidase", group: "pompe", name: "Cipaglucosidase alfa with miglustat (Pombiliti with Opfolda)", short: "Pombiliti", color: "#1F7A5A" },
+  { id: "alglucosidase", group: "pompe", name: "Alglucosidase alfa (Lumizyme, Myozyme)", short: "Lumizyme", color: "#1D5FA8", infusion: true },
+  { id: "avalglucosidase", group: "pompe", name: "Avalglucosidase alfa (Nexviazyme, Nexviadyme)", short: "Nexviazyme", color: "#C0392B", infusion: true },
+  { id: "cipaglucosidase", group: "pompe", name: "Cipaglucosidase alfa with miglustat (Pombiliti with Opfolda)", short: "Pombiliti", color: "#1F7A5A", infusion: true },
   { id: "pompeTrial", group: "pompe", trial: true, name: "Clinical trial drug", short: "Trial drug", color: "#8E44AD" },
   { id: "niv", group: "breathing", name: "Breathing support (BiPAP or ventilator)", short: "Breathing support", color: "#5D6D7E" },
   // MPS
@@ -370,7 +370,8 @@ export const CONDITIONS = [
       { id: "migraine", title: "Migraine today", chartTitle: "Days with a migraine", types: ["migraine"], daily: true },
     ],
     meds: ["migalastat", "agala", "agalb", "pegun", "trial", ...kidneyCore, "statin", "gabapentin", "pregabalin", "carbamazepine", "amitriptyline", "opioid", "linaclotide", "agalEnzyme", "furosemide", "compression", ...PREMED_IDS, "custom"],
-    // The quick log asks about a reaction to an enzyme infusion (how bad, premedications, how long it ran).
+    // For someone on infusions, the quick log asks about a reaction to an enzyme infusion (how bad, premedications,
+    // how long it ran). Profile asks whether they're on infusions.
     infusionLog: true,
     trials: "Fabry disease",
     pubmed: '"fabry disease"[tiab]',
@@ -1035,7 +1036,8 @@ export const CONDITIONS = [
         links: [{ label: "Website", href: "https://www.gaucher.org.uk" }] },
     ],
     sample: {
-      profile: { mutation: "N370S (c.1226A>G), both copies", phenotype: "Type 1", birthDate: "1985-01-17", sex: "Female" },
+      // Now on a capsule (eliglustat), so not on infusions.
+      profile: { mutation: "N370S (c.1226A>G), both copies", phenotype: "Type 1", birthDate: "1985-01-17", sex: "Female", infusions: "no" },
       series: {
         lysoGb1: [312, 298, 210, 150, 112, 86, 70, 61, 55],
         chito: [8400, 8100, 5600, 3900, 2800, 2100, 1700, 1500, 1350],

@@ -3145,5 +3145,13 @@
   "Una reazione a un'infusione di enzima, durante l'infusione o nelle ore successive. Può comprendere brividi, febbre, arrossamento, prurito, orticaria, nausea, mal di testa, senso di oppressione al petto o difficoltà a respirare. Sei tu a valutare quanto è stata forte, da {0} (lieve) a {1} (la peggiore).",
   "Informa il tuo team di cura di ogni reazione. Potrebbe modificare la premedicazione o rallentare l'infusione. I punti sotto il grafico mostrano la premedicazione presa prima di ogni infusione.",
   "Reazione all'infusione {0} /{1}, Premedicazione Paracetamolo (Tylenol), Difenidramina (Benadryl), Durata dell'infusione {2} h",
-  "Reazione all'infusione {0} /{1}, Premedicazione Paracetamolo (Tylenol), Difenidramina (Benadryl), Famotidina (Pepcid), Durata dell'infusione {2} h"
+  "Reazione all'infusione {0} /{1}, Premedicazione Paracetamolo (Tylenol), Difenidramina (Benadryl), Famotidina (Pepcid), Durata dell'infusione {2} h",
+  "Esporta i tuoi risultati",
+  "Tocca Esporta grafici (PDF) per avere una copia dei tuoi grafici da stampare o portare alle visite. Tocca Esporta foglio di calcolo (CSV) per avere un file con tutti i tuoi risultati, il più facile da condividere con il tuo team di cura. Nessuno dei due file può essere protetto, quindi inviali solo a persone di cui ti fidi.",
+  "Per chiedere a un assistente di intelligenza artificiale (IA) dei tuoi risultati, esporta il foglio di calcolo (CSV) e incollalo. My Rare Disease Tracker non ha alcun controllo su ciò che un'IA risponde, sulle domande poste o sui dati inseriti nell'app, e quindi non si assume la responsabilità delle risposte di alcuna IA. L'IA non sostituisce il tuo medico.",
+  "Fai infusioni (terapia enzimatica sostitutiva)?",
+  "Questa persona fa infusioni (terapia enzimatica sostitutiva)?",
+  "Scegli No per nascondere il registro delle reazioni all'infusione. Le reazioni già registrate restano nella pagina Andamenti.",
+  "Sì aggiunge uno spazio per registrare le reazioni all'infusione. Puoi cambiarlo in Profilo.",
+  "Registro delle reazioni all'infusione nascosto. Puoi cambiarlo in Profilo."
 ]

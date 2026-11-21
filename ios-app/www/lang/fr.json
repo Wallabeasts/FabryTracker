@@ -3145,5 +3145,13 @@
   "Une réaction à une perfusion d’enzyme, pendant la perfusion ou dans les heures qui suivent. Elle peut comprendre des frissons, de la fièvre, des rougeurs, des démangeaisons, de l’urticaire, des nausées, des maux de tête, une oppression dans la poitrine ou une difficulté à respirer. Vous notez son intensité, de {0} (légère) à {1} (la pire).",
   "Signalez chaque réaction à votre équipe soignante. Elle pourra modifier votre prémédication ou ralentir la perfusion. Les points sous le graphique montrent la prémédication prise avant chaque perfusion.",
   "Réaction à la perfusion {0} /{1}, Prémédication Paracétamol (Tylenol), Diphénhydramine (Benadryl), Durée de la perfusion {2} h",
-  "Réaction à la perfusion {0} /{1}, Prémédication Paracétamol (Tylenol), Diphénhydramine (Benadryl), Famotidine (Pepcid), Durée de la perfusion {2} h"
+  "Réaction à la perfusion {0} /{1}, Prémédication Paracétamol (Tylenol), Diphénhydramine (Benadryl), Famotidine (Pepcid), Durée de la perfusion {2} h",
+  "Exporter vos résultats",
+  "Touchez Exporter les graphiques (PDF) pour obtenir une copie de vos graphiques à imprimer ou à apporter aux rendez-vous. Touchez Exporter un tableur (CSV) pour obtenir un fichier de tous vos résultats, le plus simple à partager avec votre équipe soignante. Aucun de ces deux fichiers ne peut être verrouillé : envoyez-les uniquement à des personnes de confiance.",
+  "Pour interroger un assistant d’intelligence artificielle (IA) sur vos résultats, exportez le tableur (CSV) et collez-le. My Rare Disease Tracker n’a aucun contrôle sur les réponses d’une IA, sur les questions posées ni sur les données saisies dans l’application ; il n’est donc pas responsable des réponses d’une IA. L’IA ne remplace pas votre médecin.",
+  "Recevez-vous des perfusions (enzymothérapie substitutive) ?",
+  "Cette personne reçoit-elle des perfusions (enzymothérapie substitutive) ?",
+  "Choisissez Non pour masquer le suivi des réactions à la perfusion. Les réactions déjà notées restent sur la page Tendances.",
+  "Oui ajoute un endroit où noter les réactions à la perfusion. Vous pouvez modifier ce choix dans Profil.",
+  "Suivi des réactions à la perfusion masqué. Vous pouvez modifier ce choix dans Profil."
 ]

@@ -3145,5 +3145,13 @@
   "Una reacción a una infusión de enzima, durante la infusión o en las horas siguientes. Puede incluir escalofríos, fiebre, enrojecimiento, picazón, ronchas, náuseas, dolor de cabeza, opresión en el pecho o dificultad para respirar. Usted califica qué tan fuerte fue, de {0} (leve) a {1} (la peor).",
   "Informe a su equipo médico de cada reacción. Es posible que cambien su premedicación o hagan la infusión más lenta. Los puntos debajo de la gráfica muestran la premedicación que tomó antes de cada infusión.",
   "Reacción a la infusión {0} /{1}, Premedicación Paracetamol o acetaminofén (Tylenol), Difenhidramina (Benadryl), Duración de la infusión {2} h",
-  "Reacción a la infusión {0} /{1}, Premedicación Paracetamol o acetaminofén (Tylenol), Difenhidramina (Benadryl), Famotidina (Pepcid), Duración de la infusión {2} h"
+  "Reacción a la infusión {0} /{1}, Premedicación Paracetamol o acetaminofén (Tylenol), Difenhidramina (Benadryl), Famotidina (Pepcid), Duración de la infusión {2} h",
+  "Exportar sus resultados",
+  "Toque Exportar gráficas (PDF) para obtener una copia de sus gráficas para imprimir o llevar a sus citas. Toque Exportar hoja de cálculo (CSV) para obtener un archivo con todos sus resultados, que es lo más fácil de compartir con su equipo médico. Ninguno de los dos archivos se puede proteger, así que envíelos solo a personas de su confianza.",
+  "Para preguntarle a un asistente de inteligencia artificial (IA) sobre sus resultados, exporte la hoja de cálculo (CSV) y péguela. My Rare Disease Tracker no tiene control sobre lo que responde una IA, las preguntas que se le hacen ni los datos introducidos en la aplicación, por lo que no se hace responsable de las respuestas de ninguna IA. La IA no sustituye a su médico.",
+  "¿Recibe infusiones (terapia de reemplazo enzimático)?",
+  "¿Recibe infusiones esta persona (terapia de reemplazo enzimático)?",
+  "Elija No para ocultar el registro de reacciones a la infusión. Las reacciones ya registradas siguen en la página Tendencias.",
+  "Sí añade un lugar para registrar las reacciones a la infusión. Puede cambiarlo en Perfil.",
+  "Registro de reacciones a la infusión oculto. Puede cambiarlo en Perfil."
 ]
