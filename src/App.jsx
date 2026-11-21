@@ -462,7 +462,7 @@ const CHART_OPTIONS = [
 ];
 
 const MED_GROUPS = [
-  { id: "fabry", label: "Fabry therapies", specific: true, charts: ["egfr", "gb3", "lysoGb3", "ada", "nab", "lvmi", "ivs", "troponin", "t1", "lge", "symptoms", "events", "infRxn"] },
+  { id: "fabry", label: "Fabry therapies", specific: true, charts: ["egfr", "gb3", "lysoGb3", "ada", "nab", "lvmi", "ivs", "troponin", "t1", "lge", "symptoms", "events"] },
   { id: "kidney", label: "Kidney protection", charts: ["egfr", "uacr", "upcr", "sbp", "dbp"] },
   { id: "statin", label: "Cholesterol", charts: ["ldl"] },
   { id: "pain", label: "Nerve pain", charts: ["symptoms"] },
@@ -569,12 +569,17 @@ function medInfo(raw) {
   return d;
 }
 
+// The medicine groups that hold an infusion therapy (Fabry, Gaucher and Pompe therapies).
+const INFUSION_GROUPS = new Set(MEDS.filter((x) => x.infusion).map((x) => x.group));
 const chartsForMed = (raw) => {
   const m = effectiveMed(raw);
   const d = medInfo(m);
   // "gi" was the stomach-episode chart's name before other events existed.
   if (d.group === "custom") return (m.charts || []).map((c) => (c === "gi" ? "events" : c));
-  return (MED_GROUPS.find((g) => g.id === d.group) || { charts: [] }).charts;
+  const charts = (MED_GROUPS.find((g) => g.id === d.group) || { charts: [] }).charts;
+  // Enzyme replacement therapies (Fabrazyme, Cerezyme, Lumizyme ...) are given by infusion, so they are also marked
+  // on the infusion reaction graph. A clinical trial drug for one of those diseases may be an infusion too.
+  return (d.infusion || (d.trial && INFUSION_GROUPS.has(d.group))) && !charts.includes("infRxn") ? [...charts, "infRxn"] : charts;
 };
 const medsFor = (chartId, meds) => meds.filter((m) => chartsForMed(m).includes(chartId));
 // "Calcitriol" + "Calcitriol 0.25 mcg" reads as "Calcitriol 0.25 mcg", not the name twice.
@@ -2150,6 +2155,14 @@ function InfusionChart({ entries, meds, onTable }) {
   const pad = Math.max(21 * 864e5, span * 0.06);
   const domain = f.months ? [monthsAgo(f.months), Date.now() + 7 * 864e5]
     : rows.length ? [rows[0].t - pad, rows[rows.length - 1].t + pad] : [Date.now() - 365 * 864e5, Date.now()];
+  // The enzyme therapy and premedications being taken during the time shown. A therapy started long before the first
+  // reaction has no start line on this graph, so it's named here.
+  const during = meds.map(effectiveMed)
+    .filter((m) => toT(m.start) <= domain[1] && (!m.stop || toT(m.stop) >= domain[0]))
+    .map((m) => {
+      const d = medInfo(m);
+      return { id: m.id, text: nameWithDose(d.short, doseOn(m, Math.min(domain[1], m.stop ? toT(m.stop) : Infinity))), color: d.color };
+    });
   return (
     <section className="p-4 mb-3 rounded-lg" data-infusions style={{ background: C.surface, border: `1px solid ${C.line}` }}>
       <div className="flex items-baseline justify-between mb-2">
@@ -2181,6 +2194,17 @@ function InfusionChart({ entries, meds, onTable }) {
             </label>
           )}
           {shown.length === 0 && <p className="text-sm py-4" style={{ color: C.muted }}>No infusion reactions in this time frame. Try a longer time frame.</p>}
+          {shown.length > 0 && during.length > 0 && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs mb-2" data-infusion-meds>
+              <span style={{ color: C.muted }}>Treatments during this time:</span>
+              {during.map((x) => (
+                <span key={x.id} className="flex items-center gap-1 font-bold" style={{ color: x.color }}>
+                  <span aria-hidden="true" className="inline-block rounded-sm" style={{ width: 12, height: 3, background: x.color }} />
+                  {dyn(x.text)}
+                </span>
+              ))}
+            </div>
+          )}
           {points.length > 0 && (
             <TimeChart domain={domain} yDomain={[0, 10]} yTicks={[0, 2, 4, 6, 8, 10]}
               series={[{ key: "infRxn", name: "Infusion reaction", color: C.ink, points }]}
@@ -3007,15 +3031,28 @@ const WATCH_UI = {
   checkOnPhone: "You'll check it on your iPhone before it's saved.", recent: "Recent", byVoice: "By voice",
   outOf10: "out of 10", save: "Save", turnCrown: "Turn the crown or tap − and +",
   sentPhone: "Sent to iPhone", waitPhone: "Waiting for iPhone",
+  next: "Next", premeds: "Premedications", infTime: "Infusion time", notSet: "Not set",
 };
-function watchConfig(cond, person, family) {
+// The infusion reaction on the watch, for people on infusions: a 1-to-10 score like the others. A watch app that knows
+// about `infusion` (below) then also asks for the premedications and how long the infusion took.
+const WATCH_INFUSION = { id: "infRxn", name: "Infusion reaction", prompt: SEVERITY_QUESTION, rgb: "179,38,30" };
+// `inf` is { on, standing }: whether the infusion reaction log is showing, and the premedications listed under
+// Treatments as being taken now (they start ticked, as in the phone's quick log).
+function watchConfig(cond, person, family, inf = {}) {
+  const pm = metricById("infPremeds");
+  const infusionOn = Boolean(inf.on && cond.infusionLog && pm);
+  const standing = infusionOn ? multiValues(pm, inf.standing || "") : [];
   return {
     v: 1, person: person.id, who: family ? String(person.name || "") : "", disease: tr(cond.name),
-    scores: quickScores(cond).map((r) => ({ id: r.id, label: tr(r.name || (metricById(r.id) || {}).short || r.id).replace(/^\p{Ll}/u, (c) => c.toUpperCase()),
+    scores: [...quickScores(cond), ...(infusionOn ? [WATCH_INFUSION] : [])].map((r) => ({ id: r.id, label: tr(r.name || (metricById(r.id) || {}).short || r.id).replace(/^\p{Ll}/u, (c) => c.toUpperCase()),
       prompt: tr(r.prompt || ""), min: r.min === 0 ? 0 : 1,
       // The score's color on the phone's charts, and whether a higher number is better (quality of life).
       rgb: r.rgb || "15,110,120", high: /\(best\)\s*$/i.test(r.prompt || "") })),
     groups: condEventGroups(cond).map((g) => ({ title: tr(g.title), types: g.list.map((t) => ({ id: t.id, label: tr(t.label) })) })),
+    ...(infusionOn ? { infusion: {
+      premeds: pm.options.map((o) => ({ id: o.value, label: tr(o.label), on: standing.includes(o.value) })),
+      times: DURATION_CHOICES.map((n) => ({ minutes: n, label: tr(durText(n)) })),
+    } } : {}),
     ui: Object.fromEntries(Object.entries(WATCH_UI).map(([k, v]) => [k, tr(v)])),
   };
 }
@@ -3027,6 +3064,16 @@ function addWatchTap(d, it) {
   const id = watchId(it);
   if (!isDay(it.date) || (d.entries || []).some((e) => e.id === id) || (d.events || []).some((e) => e.id === id)) return d;
   const cond = condOf(d);
+  if (it.kind === "score" && it.metric === "infRxn") {
+    // An infusion reaction: the score, plus the premedications and infusion time when the watch asked for them.
+    const n = Number(it.value);
+    const pm = metricById("infPremeds");
+    if (!cond.infusionLog || !pm || !Number.isInteger(n) || n < 1 || n > 10) return d;
+    const picked = multiValues(pm, typeof it.premeds === "string" ? it.premeds : "").join(",");
+    const mins = Number(it.minutes);
+    return { ...d, entries: [...d.entries, { id, date: it.date, infRxn: n, ...(picked ? { infPremeds: picked } : {}),
+      ...(Number.isInteger(mins) && mins > 0 && mins <= 1440 ? { infMin: mins } : {}) }] };
+  }
   if (it.kind === "score") {
     const row = quickScores(cond).find((r) => r.id === it.metric);
     const n = Number(it.value);
@@ -8349,8 +8396,8 @@ function FabryTracker() {
   // The watch shows the Quick Log for the person and disease open here, in this language.
   useEffect(() => {
     if (!IOS_APP || !loaded) return;
-    watchSetup(watchConfig(cond, activePerson, family));
-  }, [loaded, cond.id, activePerson.id, activePerson.name, family, watchLang]);
+    watchSetup(watchConfig(cond, activePerson, family, { on: infusion.on, standing: standingPremeds }));
+  }, [loaded, cond.id, activePerson.id, activePerson.name, family, watchLang, infusion.on, standingPremeds]);
   // Brings in what was logged on the watch: when the app opens, comes back to the front, and every 15 seconds.
   useEffect(() => {
     if (!IOS_APP || !loaded) return undefined;

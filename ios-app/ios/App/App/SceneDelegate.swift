@@ -313,10 +313,12 @@ final class WatchLink: NSObject, WCSessionDelegate {
         guard let id = item["id"] as? String, !id.isEmpty, id.count <= 64,
               let kind = item["kind"] as? String, ["score", "event", "voice"].contains(kind) else { return }
         var clean: [String: Any] = ["id": id, "kind": kind]
-        for key in ["person", "date", "metric", "type", "ask"] {
+        // "premeds" and "minutes" come with an infusion reaction: the premedications taken and the infusion time.
+        for key in ["person", "date", "metric", "type", "ask", "premeds"] {
             if let v = item[key] as? String, v.count <= 64 { clean[key] = v }
         }
         if let v = item["value"] as? NSNumber { clean["value"] = v }
+        if let v = item["minutes"] as? NSNumber { clean["minutes"] = v }
         if let t = item["text"] as? String { clean["text"] = String(t.prefix(600)) }
         let isNew: Bool = queue.sync {
             var seen = self.seenIds()

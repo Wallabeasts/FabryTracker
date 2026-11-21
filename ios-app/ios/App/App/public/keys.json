@@ -3153,5 +3153,7 @@
   "Are they on infusions (enzyme replacement therapy)?",
   "Choose No to hide the infusion reaction log. Reactions already logged stay on the Trends page.",
   "Yes adds a place to log infusion reactions. You can change this in Profile.",
-  "Infusion reaction log hidden. You can change this in Profile."
+  "Infusion reaction log hidden. You can change this in Profile.",
+  "Treatments during this time:",
+  "Not set"
 ]

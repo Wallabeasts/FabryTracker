@@ -22,12 +22,28 @@ struct WatchConfig: Codable, Equatable {
         var types: [EventType]
         var id: String { title }
     }
+    // What the infusion reaction also asks: the premedications taken before the infusion and how long it ran.
+    struct Infusion: Codable, Equatable {
+        struct Premed: Codable, Equatable, Identifiable {
+            var id: String
+            var label: String
+            var on: Bool?      // listed under Treatments on the phone as being taken now, so it starts ticked
+        }
+        struct Time: Codable, Equatable, Identifiable {
+            var minutes: Int
+            var label: String  // like "3 h 30 min", already in the patient's language
+            var id: Int { minutes }
+        }
+        var premeds: [Premed]
+        var times: [Time]
+    }
     var v: Int
     var person: String
     var who: String?
     var disease: String
     var scores: [Score]
     var groups: [Group]
+    var infusion: Infusion?   // sent only for people on infusions (enzyme replacement therapy)
     var ui: [String: String]
 }
 
@@ -164,6 +180,15 @@ final class WatchStore: NSObject, @preconcurrency WCSessionDelegate {
 
     func logScore(_ score: WatchConfig.Score, _ value: Int) {
         send(["kind": "score", "metric": score.id, "value": value], recentText: "\(score.label) \(value)/10")
+        last[score.id] = "\(value)/10"
+    }
+
+    // An infusion reaction: the score, the premedications taken (their ids) and the infusion time in minutes, if given.
+    func logInfusion(_ score: WatchConfig.Score, _ value: Int, premeds: [String], minutes: Int?) {
+        var fields: [String: Any] = ["kind": "score", "metric": score.id, "value": value]
+        if !premeds.isEmpty { fields["premeds"] = premeds.joined(separator: ",") }
+        if let m = minutes { fields["minutes"] = m }
+        send(fields, recentText: "\(score.label) \(value)/10")
         last[score.id] = "\(value)/10"
     }
 

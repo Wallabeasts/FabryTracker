@@ -36,6 +36,7 @@ enum Brand {
         case "anxiety": return "brain.head.profile"
         case "qol": return "face.smiling"
         case "abdPain": return "figure.arms.open"
+        case "infRxn": return "ivfluid.bag.fill"
         default: return "slider.horizontal.3"
         }
     }
@@ -99,7 +100,14 @@ struct ContentView: View {
                     if let cfg = store.config {
                         header(cfg)
                         ForEach(cfg.scores) { score in
-                            NavigationLink { ScoreView(score: score) } label: {
+                            NavigationLink {
+                                // The infusion reaction also asks for premedications and the infusion time.
+                                if score.id == "infRxn", let setup = cfg.infusion {
+                                    InfusionView(score: score, setup: setup)
+                                } else {
+                                    ScoreView(score: score)
+                                }
+                            } label: {
                                 Tile(title: score.label, detail: store.last[score.id] ?? "",
                                      icon: Brand.icon(forScore: score.id), color: Brand.color(score.rgb))
                             }
@@ -249,6 +257,190 @@ struct ScoreView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(icon == "plus" ? "+1" : "-1")
+    }
+}
+
+// The round picker used by the infusion reaction: turn the Digital Crown, or tap − and +. `crown` holds the choice.
+struct Dial: View {
+    let label: String      // what is being chosen, read by VoiceOver
+    let text: String       // shown in the middle of the ring
+    let spoken: String     // the choice, read by VoiceOver
+    let fraction: Double   // how much of the ring is filled, 0 to 1
+    let tint: Color
+    let low: Int
+    let high: Int
+    var size: CGFloat = 46
+    @Binding var crown: Double
+    @FocusState private var focused: Bool
+
+    private var value: Int { min(high, max(low, Int(crown.rounded()))) }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            stepButton("minus", by: -1)
+            ZStack {
+                Circle().stroke(.white.opacity(0.15), lineWidth: 7)
+                Circle()
+                    .trim(from: 0, to: CGFloat(fraction))
+                    .stroke(tint, style: StrokeStyle(lineWidth: 7, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .animation(.easeOut(duration: 0.15), value: value)
+                Text(text)
+                    .font(.system(size: size, weight: .bold, design: .rounded))
+                    .foregroundStyle(tint)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.5)
+                    .padding(.horizontal, 12)
+            }
+            .frame(width: 92, height: 92)
+            .focusable()
+            .focused($focused)
+            .digitalCrownRotation($crown, from: Double(low), through: Double(high), by: 1,
+                                  sensitivity: .low, isContinuous: false, isHapticFeedbackEnabled: true)
+            .accessibilityElement()
+            .accessibilityLabel(label)
+            .accessibilityValue(spoken)
+            .accessibilityAdjustableAction { dir in
+                crown = Double(min(high, max(low, value + (dir == .increment ? 1 : -1))))
+            }
+            stepButton("plus", by: 1)
+        }
+        .onAppear { focused = true }
+    }
+
+    private func stepButton(_ icon: String, by step: Int) -> some View {
+        Button {
+            crown = Double(min(high, max(low, value + step)))
+        } label: {
+            Image(systemName: icon).font(.title3.bold()).foregroundStyle(.white)
+                .frame(width: 34, height: 44)
+                .background(RoundedRectangle(cornerRadius: 12).fill(Brand.card))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(icon == "plus" ? "+1" : "-1")
+    }
+}
+
+// An infusion reaction, in three short steps: how bad it was (1 to 10), the premedications taken before the
+// infusion (the ones listed on the phone start ticked), and how long the infusion took (can be left as "Not set").
+struct InfusionView: View {
+    @Environment(WatchStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    let score: WatchConfig.Score
+    let setup: WatchConfig.Infusion
+    @State private var step = 0
+    @State private var crown: Double = 5
+    @State private var taken: Set<String> = []
+    @State private var timeCrown: Double = 0
+    @State private var ready = false
+    @State private var saved: Int?
+
+    private var severity: Int { min(10, max(1, Int(crown.rounded()))) }
+    // 0 is "Not set"; 1 and up are the infusion times sent by the phone, in order.
+    private var timeIndex: Int { min(setup.times.count, max(0, Int(timeCrown.rounded()))) }
+    private var timeText: String { timeIndex == 0 ? store.t("notSet", "Not set") : setup.times[timeIndex - 1].label }
+
+    var body: some View {
+        Group {
+            if let n = saved {
+                Done(text: "\(score.label) \(n)/10")
+            } else if step == 0 {
+                VStack(spacing: 6) {
+                    Dial(label: score.label, text: "\(severity)",
+                         spoken: "\(severity) \(store.t("outOf10", "out of 10"))",
+                         fraction: Double(severity) / 10,
+                         tint: Brand.severity(severity, min: 1, highIsGood: false),
+                         low: 1, high: 10, crown: $crown)
+                    Text(store.t("turnCrown", "Turn the crown or tap − and +"))
+                        .font(.system(size: 11)).foregroundStyle(.white.opacity(0.7))
+                        .multilineTextAlignment(.center).lineLimit(2)
+                    bigButton(store.t("next", "Next")) { step = 1 }
+                }
+            } else if step == 1 {
+                ScrollView {
+                    VStack(spacing: 6) {
+                        Text(store.t("premeds", "Premedications"))
+                            .font(.caption2.bold()).foregroundStyle(Brand.cyan)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        ForEach(setup.premeds) { med in
+                            premedRow(med)
+                        }
+                        bigButton(store.t(setup.times.isEmpty ? "save" : "next", setup.times.isEmpty ? "Save" : "Next")) {
+                            if setup.times.isEmpty { save() } else { step = 2 }
+                        }
+                        .padding(.top, 4)
+                    }
+                    .padding(.horizontal, 4)
+                }
+            } else {
+                VStack(spacing: 6) {
+                    Dial(label: store.t("infTime", "Infusion time"), text: timeText, spoken: timeText,
+                         fraction: setup.times.isEmpty ? 0 : Double(timeIndex) / Double(setup.times.count),
+                         tint: Brand.cyan, low: 0, high: setup.times.count, size: 22, crown: $timeCrown)
+                    Text(store.t("infTime", "Infusion time"))
+                        .font(.system(size: 11)).foregroundStyle(.white.opacity(0.7))
+                        .multilineTextAlignment(.center).lineLimit(2)
+                    bigButton(store.t("save", "Save")) { save() }
+                }
+            }
+        }
+        .navigationTitle(score.label)
+        .containerBackground(Brand.background, for: .navigation)
+        .onAppear {
+            // The premedications listed on the phone as being taken now start ticked. Done once: this runs again at
+            // each step, and by then the ticks are the patient's own.
+            if !ready {
+                ready = true
+                taken = Set(setup.premeds.filter { $0.on ?? false }.map { $0.id })
+            }
+        }
+    }
+
+    private func save() {
+        let n = severity
+        let ids = setup.premeds.map { $0.id }.filter { taken.contains($0) }
+        let minutes: Int? = timeIndex == 0 ? nil : setup.times[timeIndex - 1].minutes
+        store.logInfusion(score, n, premeds: ids, minutes: minutes)
+        saved = n
+        Task { try? await Task.sleep(nanoseconds: 1_300_000_000); dismiss() }
+    }
+
+    private func bigButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title).font(.headline).foregroundStyle(.white)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .background(Capsule().fill(Brand.button))
+        }
+        .buttonStyle(.plain)
+    }
+
+    // One premedication: tap to tick it or untick it.
+    private func premedRow(_ med: WatchConfig.Infusion.Premed) -> some View {
+        let on = taken.contains(med.id)
+        return Button {
+            var ticked = taken
+            if on {
+                ticked.remove(med.id)
+            } else {
+                ticked.insert(med.id)
+            }
+            taken = ticked
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: on ? "checkmark.circle.fill" : "circle")
+                    .font(.title3).foregroundStyle(on ? Brand.cyan : Color.white.opacity(0.5))
+                Text(med.label).font(.footnote).foregroundStyle(.white)
+                    .multilineTextAlignment(.leading).lineLimit(2).minimumScaleFactor(0.8)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .background(RoundedRectangle(cornerRadius: 14).fill(Brand.card))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(on ? Brand.cyan.opacity(0.8) : Color.clear, lineWidth: 1.5))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(on ? .isSelected : [])
     }
 }
 
